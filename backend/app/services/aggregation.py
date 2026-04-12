@@ -54,6 +54,12 @@ async def build_daily_report(
     dept_scope: Optional[str] = None, advisor_name: Optional[str] = None,
     filter_depts: Optional[List[str]] = None,
     filter_advisors: Optional[List[str]] = None,
+    filter_line: Optional[List[str]] = None,
+    filter_sub_line: Optional[List[str]] = None,
+    filter_group_sys: Optional[List[str]] = None,
+    filter_biz_block: Optional[List[str]] = None,
+    filter_group_l1: Optional[List[str]] = None,
+    filter_group_advisor: Optional[List[str]] = None,
 ) -> dict:
 
     fy_start    = get_fy_start(today)
@@ -93,22 +99,56 @@ async def build_daily_report(
         if role == "ADVISOR" and advisor_name: return f"{alias}.advisor_name = :advisor_name"
         return "1=1"
 
-    # ── [Fix1] 用户筛选: 签约/退费用 original_dept，收款/快照用 dept ──
+    # ── 用户筛选：支持按条线 / 按团队 / 兼容旧版部门筛选 ──
+    # 按条线筛选（系统口径）：条线 → 二级条线 → 二级分组部门(secondary_group)
+    # 按团队筛选（顾问口径）：业务板块 → 一级分组部门 → 二级分组部门(secondary_group_advisor)
+
+    # -- 预计算：如果按业务板块/一级分组部门筛选，需展开为二级分组部门列表 --
+    resolved_group_sys_from_dim = []
+    resolved_group_adv_from_dim = []
+
+    if filter_biz_block or filter_group_l1:
+        dim_clauses = []
+        if filter_biz_block: dim_clauses.append("biz_block = ANY(:filter_biz_block)")
+        if filter_group_l1:  dim_clauses.append("primary_group = ANY(:filter_group_l1)")
+        dim_where = " OR ".join(dim_clauses)
+        dim_rows = (await db.execute(text(f"""
+            SELECT secondary_group FROM dim_group_dept WHERE {dim_where}
+        """), {"filter_biz_block": filter_biz_block or [], "filter_group_l1": filter_group_l1 or []})).scalars().all()
+        resolved_group_adv_from_dim = list(dim_rows)
+
     def ufilter_sign(alias="fs"):
         clauses = []
+        # 兼容旧版
         if filter_depts:    clauses.append(f"{alias}.original_dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        # 按条线筛选（系统口径维度）
+        if filter_line:      clauses.append(f"{alias}.line = ANY(:filter_line)")
+        if filter_sub_line:  clauses.append(f"{alias}.sub_line = ANY(:filter_sub_line)")
+        if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
+        # 按团队筛选（顾问口径维度）
+        adv_group_list = list(filter_group_advisor or []) + resolved_group_adv_from_dim
+        if adv_group_list:   clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
         return " AND ".join(clauses) if clauses else "1=1"
+
     def ufilter_receipt(alias="fr"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        # 收款表暂无 line/secondary_group 字段，按条线/团队筛选不直接过滤收款
         return " AND ".join(clauses) if clauses else "1=1"
+
     def ufilter_fund(alias="fs"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        # 资金快照用 secondary_group
+        if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
+        adv_group_list = list(filter_group_advisor or []) + resolved_group_adv_from_dim
+        if adv_group_list:   clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
         return " AND ".join(clauses) if clauses else "1=1"
+
+    adv_group_all = list(filter_group_advisor or []) + resolved_group_adv_from_dim
 
     params = {
         "today": today, "yesterday": yesterday, "week_start": week_start,
@@ -122,6 +162,10 @@ async def build_daily_report(
         "advisor_name": advisor_name or "",
         "filter_depts": filter_depts or [],
         "filter_advisors": filter_advisors or [],
+        "filter_line": filter_line or [],
+        "filter_sub_line": filter_sub_line or [],
+        "filter_group_sys": filter_group_sys or [],
+        "filter_group_adv_all": adv_group_all or [],
     }
 
     r_rbac = rbac_receipt()
@@ -290,7 +334,61 @@ async def build_daily_report(
         WHERE pay.total_payment > 0 ORDER BY total_payment DESC
     """), params)).mappings().all()
 
-    # ── [Fix1] advisor_dept_links: 用 original_dept（实际部门）──
+    # ── [v4] 级联筛选器元数据 ──
+    # 按条线筛选：条线 → 二级条线 → 二级分组部门（系统口径）
+    all_lines_rows = (await db.execute(text(f"""
+        SELECT DISTINCT line FROM fact_signing fs
+        WHERE sign_date BETWEEN :fy_start AND :today AND line != '' AND {s_rbac}
+        ORDER BY line
+    """), params)).mappings().all()
+    all_lines = [r["line"] for r in all_lines_rows]
+
+    all_sub_lines_rows = (await db.execute(text(f"""
+        SELECT DISTINCT sub_line, line FROM fact_signing fs
+        WHERE sign_date BETWEEN :fy_start AND :today AND sub_line != '' AND {s_rbac}
+        ORDER BY line, sub_line
+    """), params)).mappings().all()
+    all_sub_lines = [{"value": r["sub_line"], "parent": r["line"]} for r in all_sub_lines_rows]
+
+    all_group_sys_rows = (await db.execute(text(f"""
+        SELECT DISTINCT fs.secondary_group, fs.sub_line
+        FROM fact_signing fs
+        WHERE sign_date BETWEEN :fy_start AND :today AND fs.secondary_group != '' AND fs.secondary_group != '未知部门' AND {s_rbac}
+        ORDER BY fs.sub_line, fs.secondary_group
+    """), params)).mappings().all()
+    all_group_sys = [{"value": r["secondary_group"], "parent": r["sub_line"]} for r in all_group_sys_rows]
+
+    # 按团队筛选：业务板块 → 一级分组部门 → 二级分组部门（顾问口径）
+    # 从 dim_group_dept 维度表获取完整层级
+    dim_gd_rows = (await db.execute(text("""
+        SELECT DISTINCT biz_block, primary_group, secondary_group
+        FROM dim_group_dept WHERE biz_block != '' AND primary_group != ''
+        ORDER BY biz_block, primary_group, secondary_group
+    """))).mappings().all()
+
+    all_biz_blocks = sorted(set(r["biz_block"] for r in dim_gd_rows))
+    all_group_l1 = [{"value": r["primary_group"], "parent": r["biz_block"]} for r in dim_gd_rows]
+    # 去重 primary_group
+    seen_l1 = set()
+    dedup_l1 = []
+    for item in all_group_l1:
+        key = (item["value"], item["parent"])
+        if key not in seen_l1:
+            seen_l1.add(key)
+            dedup_l1.append(item)
+    all_group_l1 = dedup_l1
+
+    all_group_advisor = [{"value": r["secondary_group"], "parent": r["primary_group"]} for r in dim_gd_rows]
+
+    # 顾问列表（保留）
+    all_advisors_rows = (await db.execute(text(f"""
+        SELECT DISTINCT advisor_name FROM fact_signing fs
+        WHERE sign_date BETWEEN :fy_start AND :today AND advisor_name != '' AND {s_rbac}
+        ORDER BY advisor_name
+    """), params)).mappings().all()
+    all_advisors = [r["advisor_name"] for r in all_advisors_rows]
+
+    # 兼容旧版 advisor_dept_links (保留给可能的旧前端)
     adl_rows = (await db.execute(text(f"""
         SELECT DISTINCT advisor_name, original_dept AS dept
         FROM fact_signing fs
@@ -304,21 +402,7 @@ async def build_daily_report(
         advisor_dept_links.setdefault(row["advisor_name"], [])
         if row["dept"] not in advisor_dept_links[row["advisor_name"]]:
             advisor_dept_links[row["advisor_name"]].append(row["dept"])
-
-    # ── [Fix1] all_depts: 用 original_dept ──
-    all_depts_rows = (await db.execute(text(f"""
-        SELECT DISTINCT original_dept AS dept FROM fact_signing fs
-        WHERE sign_date BETWEEN :fy_start AND :today AND original_dept != '' AND {s_rbac}
-        ORDER BY dept
-    """), params)).mappings().all()
-    all_depts = [r["dept"] for r in all_depts_rows]
-
-    all_advisors_rows = (await db.execute(text(f"""
-        SELECT DISTINCT advisor_name FROM fact_signing fs
-        WHERE sign_date BETWEEN :fy_start AND :today AND advisor_name != '' AND {s_rbac}
-        ORDER BY advisor_name
-    """), params)).mappings().all()
-    all_advisors = [r["advisor_name"] for r in all_advisors_rows]
+    all_depts = sorted(set(r["dept"] for r in adl_rows))
 
     # ── 财周 ──
     current_fw = get_fiscal_week_number(today)
@@ -383,7 +467,19 @@ async def build_daily_report(
             {"rank":i+1,"name":r["name"],"total_payment":safe_round(float(r["total_payment"] or 0),2),
              "gross_sign":safe_round(float(r["gross_sign"] or 0),2),"multilang":safe_round(float(r["multilang"] or 0),2),
              "unarchived_unconfirmed":safe_round(float(r["unarchived_unconfirmed"] or 0),2)} for i,r in enumerate(million_rows)],
+        # 兼容旧版
         "advisor_dept_links": advisor_dept_links,
         "all_depts": all_depts,
         "all_advisors": all_advisors,
+        # v4: 级联筛选器元数据
+        "filter_options": {
+            # 按条线筛选（系统口径）: line → sub_line → secondary_group
+            "lines": all_lines,
+            "sub_lines": all_sub_lines,
+            "group_sys": all_group_sys,
+            # 按团队筛选（顾问口径）: biz_block → primary_group → secondary_group_advisor
+            "biz_blocks": all_biz_blocks,
+            "group_l1": all_group_l1,
+            "group_advisor": all_group_advisor,
+        },
     }

@@ -92,7 +92,15 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
     <div class="mob-meta"><div class="tb-pill">执行日 <b id="hd-date-m"></b></div><div class="tb-pill">当月 <b id="hd-mth-m"></b></div><div class="tb-pill">财年 <b id="hd-fy-m"></b></div></div>
   </div>
   <div class="fp-wrap"><div class="fp-inner">
-    <div class="fp-group"><div class="fp-lbl">部门（多选）</div><select class="fp-sel" id="f-dept" multiple size="4" style="width:185px"></select></div>
+    <div class="fp-group"><div class="fp-lbl" style="color:#e8b055;font-weight:700">▎按条线筛选</div></div>
+    <div class="fp-group"><div class="fp-lbl">条线</div><select class="fp-sel" id="f-line" multiple size="4" style="width:120px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">二级条线</div><select class="fp-sel" id="f-subline" multiple size="4" style="width:140px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">分组部门(系统)</div><select class="fp-sel" id="f-gsys" multiple size="4" style="width:155px"></select></div>
+    <div class="fp-group" style="border-left:2px solid #444;padding-left:12px"><div class="fp-lbl" style="color:#55b0e8;font-weight:700">▎按团队筛选</div></div>
+    <div class="fp-group"><div class="fp-lbl">业务板块</div><select class="fp-sel" id="f-block" multiple size="4" style="width:120px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">一级分组部门</div><select class="fp-sel" id="f-gl1" multiple size="4" style="width:140px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">分组部门(顾问)</div><select class="fp-sel" id="f-gadv" multiple size="4" style="width:155px"></select></div>
+    <div class="fp-group" style="border-left:2px solid #444;padding-left:12px"><div class="fp-lbl" style="color:#aaa;font-weight:700">▎通用</div></div>
     <div class="fp-group"><div class="fp-lbl">顾问（多选）</div><select class="fp-sel" id="f-adv" multiple size="4" style="width:150px"></select></div>
     <div class="fp-group"><div class="fp-lbl">财年（多选）</div><select class="fp-sel" id="f-fy" multiple size="4" style="width:135px"></select></div>
     <div class="fp-group"><div class="fp-lbl">自然年月 YYYYMM（多选）</div><select class="fp-sel" id="f-ym" multiple size="4" style="width:158px"></select></div>
@@ -114,10 +122,11 @@ var API = window.location.origin;
 var RAW = null, TOKEN = localStorage.getItem('qt') || '';
 var CU = JSON.parse(localStorage.getItem('qt_u') || 'null');
 var origExecDate = null;
-// 后端返回的双向联动元数据
-var ADL = {};         // advisor_dept_links: {advisor: [dept1, dept2]}
-var ALL_DEPTS = [];   // 全量部门列表
+// 后端返回的级联筛选元数据
+var ADL = {};         // advisor_dept_links（兼容）
+var ALL_DEPTS = [];   // 兼容旧版
 var ALL_ADVS = [];    // 全量顾问列表
+var FO = {};          // filter_options: {lines, sub_lines, group_sys, biz_blocks, group_l1, group_advisor}
 
 /* ═══ AUTH ═══ */
 async function doLogin() {
@@ -147,13 +156,19 @@ function doLogout() {
   $('dash').style.display = 'none'; $('login-screen').style.display = 'flex';
 }
 
-/* ═══ FETCH — 核心：支持 execution_date + depts + advisors 后端精确过滤 ═══ */
-async function fetchReport(execDate, depts, advisors) {
+/* ═══ FETCH — 核心：支持多维度筛选 ═══ */
+async function fetchReport(execDate, filterParams) {
   var url = API + '/api/v1/dashboard/daily-report';
   var qs = [];
   if (execDate) qs.push('execution_date=' + execDate);
-  if (depts && depts.length) qs.push('depts=' + encodeURIComponent(depts.join(',')));
-  if (advisors && advisors.length) qs.push('advisors=' + encodeURIComponent(advisors.join(',')));
+  var fp = filterParams || {};
+  if (fp.advisors && fp.advisors.length) qs.push('advisors=' + encodeURIComponent(fp.advisors.join(',')));
+  if (fp.filter_line && fp.filter_line.length) qs.push('filter_line=' + encodeURIComponent(fp.filter_line.join(',')));
+  if (fp.filter_sub_line && fp.filter_sub_line.length) qs.push('filter_sub_line=' + encodeURIComponent(fp.filter_sub_line.join(',')));
+  if (fp.filter_group_sys && fp.filter_group_sys.length) qs.push('filter_group_sys=' + encodeURIComponent(fp.filter_group_sys.join(',')));
+  if (fp.filter_biz_block && fp.filter_biz_block.length) qs.push('filter_biz_block=' + encodeURIComponent(fp.filter_biz_block.join(',')));
+  if (fp.filter_group_l1 && fp.filter_group_l1.length) qs.push('filter_group_l1=' + encodeURIComponent(fp.filter_group_l1.join(',')));
+  if (fp.filter_group_advisor && fp.filter_group_advisor.length) qs.push('filter_group_advisor=' + encodeURIComponent(fp.filter_group_advisor.join(',')));
   if (qs.length) url += '?' + qs.join('&');
 
   try {
@@ -171,6 +186,7 @@ async function fetchReport(execDate, depts, advisors) {
       ADL = data.advisor_dept_links || {};
       ALL_DEPTS = data.all_depts || [];
       ALL_ADVS = data.all_advisors || [];
+      FO = data.filter_options || {};
       buildOptions();
     }
 
@@ -184,11 +200,14 @@ async function fetchReport(execDate, depts, advisors) {
 if (TOKEN && CU) { fetchReport(); } else { $('login-screen').style.display = 'flex'; }
 
 /* ═══ FILTER STATE ═══ */
-var fD = [], fA = [], fFY = [], fYM = [], fFW = [];
+var fLine=[], fSubLine=[], fGSys=[], fBlock=[], fGL1=[], fGAdv=[], fA=[], fFY=[], fYM=[], fFW=[];
 var nsAll = false, mmAll = false;
 var expanded = new Set();
 
 function selVals(id) { return Array.from($(id).selectedOptions).map(function(o){return o.value}); }
+
+function opts(arr) { return arr.map(function(v){ return '<option value="'+v+'">'+v+'</option>'; }).join(''); }
+function optsObj(arr) { return arr.map(function(o){ return '<option value="'+o.value+'">'+o.value+'</option>'; }).join(''); }
 
 /* ═══ 构建筛选器选项 ═══ */
 function buildOptions() {
@@ -196,11 +215,18 @@ function buildOptions() {
   var ed = RAW.header.execution_date || new Date().toISOString().slice(0,10);
   var curY = parseInt(ed.slice(0,4)), curM = parseInt(ed.slice(5,7));
 
-  // 部门（从后端返回的全量列表）
-  $('f-dept').innerHTML = ALL_DEPTS.map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('');
+  // 按条线筛选
+  $('f-line').innerHTML = opts(FO.lines || []);
+  $('f-subline').innerHTML = optsObj(FO.sub_lines || []);
+  $('f-gsys').innerHTML = optsObj(FO.group_sys || []);
 
-  // 顾问（从后端返回的全量列表）
-  $('f-adv').innerHTML = ALL_ADVS.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
+  // 按团队筛选
+  $('f-block').innerHTML = opts(FO.biz_blocks || []);
+  $('f-gl1').innerHTML = optsObj(FO.group_l1 || []);
+  $('f-gadv').innerHTML = optsObj(FO.group_advisor || []);
+
+  // 顾问
+  $('f-adv').innerHTML = opts(ALL_ADVS);
 
   // 财年
   var fyYear = curM >= 6 ? curY + 1 : curY;
@@ -221,10 +247,9 @@ function buildOptions() {
   }
   $('f-ym').innerHTML = ymHtml;
 
-  // 财周：从 FW1 到当前财周（动态计算）
+  // 财周
   var fwNum = RAW.header.fiscal_week_number;
   if (!fwNum) {
-    // 后端未返回时，前端自行计算
     var _d = new Date(ed), _fy = curM >= 6 ? new Date(curY,5,1) : new Date(curY-1,5,1);
     var _dow = _fy.getDay(), _dts = _dow === 0 ? 0 : 7 - _dow;
     var _fwe = new Date(_fy); _fwe.setDate(_fwe.getDate() + _dts);
@@ -237,47 +262,58 @@ function buildOptions() {
   $('f-fw').innerHTML = fwHtml;
 }
 
-/* ═══ 双向联动：部门↔顾问 下拉框动态过滤 ═══
-   选部门 → 顾问列表只显示在该部门有签约记录的顾问
-   选顾问 → 部门列表只显示该顾问有签约记录的部门
-   ADL = { advisor_name: [dept1, dept2, ...] }
-*/
-function updateDropdownLinkage() {
-  var selDepts = selVals('f-dept');
-  var selAdvs = selVals('f-adv');
-
-  if (selDepts.length > 0 && selAdvs.length === 0) {
-    // 已选部门 → 过滤顾问列表
-    var deptSet = new Set(selDepts);
-    var validAdvs = new Set();
-    Object.keys(ADL).forEach(function(adv) {
-      var advDepts = ADL[adv] || [];
-      for (var i = 0; i < advDepts.length; i++) {
-        if (deptSet.has(advDepts[i])) { validAdvs.add(adv); break; }
-      }
-    });
-    $('f-adv').innerHTML = ALL_ADVS.filter(function(a) { return validAdvs.has(a); })
-      .map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
-  } else if (selAdvs.length > 0 && selDepts.length === 0) {
-    // 已选顾问 → 过滤部门列表
-    var validDepts = new Set();
-    selAdvs.forEach(function(adv) {
-      (ADL[adv] || []).forEach(function(d) { validDepts.add(d); });
-    });
-    $('f-dept').innerHTML = ALL_DEPTS.filter(function(d) { return validDepts.has(d); })
-      .map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('');
+/* ═══ 级联联动：选父级自动过滤子级下拉列表 ═══ */
+function cascadeFilter() {
+  // 按条线级联：条线 → 二级条线 → 分组部门(系统)
+  var selLines = selVals('f-line');
+  var slAll = FO.sub_lines || [];
+  var gsAll = FO.group_sys || [];
+  if (selLines.length > 0) {
+    var lineSet = new Set(selLines);
+    var filtered = slAll.filter(function(o){ return lineSet.has(o.parent); });
+    $('f-subline').innerHTML = optsObj(filtered);
   } else {
-    // 都没选或都选了 → 恢复全量
-    $('f-dept').innerHTML = ALL_DEPTS.map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('');
-    $('f-adv').innerHTML = ALL_ADVS.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
+    $('f-subline').innerHTML = optsObj(slAll);
+  }
+  var selSL = selVals('f-subline');
+  if (selSL.length > 0) {
+    var slSet = new Set(selSL);
+    $('f-gsys').innerHTML = optsObj(gsAll.filter(function(o){ return slSet.has(o.parent); }));
+  } else if (selLines.length > 0) {
+    var validSL = new Set((FO.sub_lines||[]).filter(function(o){ return new Set(selLines).has(o.parent); }).map(function(o){return o.value}));
+    $('f-gsys').innerHTML = optsObj(gsAll.filter(function(o){ return validSL.has(o.parent); }));
+  } else {
+    $('f-gsys').innerHTML = optsObj(gsAll);
+  }
+
+  // 按团队级联：业务板块 → 一级分组部门 → 分组部门(顾问)
+  var selBlocks = selVals('f-block');
+  var l1All = FO.group_l1 || [];
+  var gaAll = FO.group_advisor || [];
+  if (selBlocks.length > 0) {
+    var bSet = new Set(selBlocks);
+    $('f-gl1').innerHTML = optsObj(l1All.filter(function(o){ return bSet.has(o.parent); }));
+  } else {
+    $('f-gl1').innerHTML = optsObj(l1All);
+  }
+  var selL1 = selVals('f-gl1');
+  if (selL1.length > 0) {
+    var l1Set = new Set(selL1);
+    $('f-gadv').innerHTML = optsObj(gaAll.filter(function(o){ return l1Set.has(o.parent); }));
+  } else if (selBlocks.length > 0) {
+    var validL1 = new Set(l1All.filter(function(o){ return new Set(selBlocks).has(o.parent); }).map(function(o){return o.value}));
+    $('f-gadv').innerHTML = optsObj(gaAll.filter(function(o){ return validL1.has(o.parent); }));
+  } else {
+    $('f-gadv').innerHTML = optsObj(gaAll);
   }
 }
 
-// 实时联动：选择部门/顾问时立即更新对方下拉列表
+// 实时联动
 document.addEventListener('DOMContentLoaded', function() {
-  var deptSel = $('f-dept'), advSel = $('f-adv');
-  if (deptSel) deptSel.addEventListener('change', updateDropdownLinkage);
-  if (advSel) advSel.addEventListener('change', updateDropdownLinkage);
+  ['f-line','f-subline','f-block','f-gl1'].forEach(function(id) {
+    var el = $(id);
+    if (el) el.addEventListener('change', cascadeFilter);
+  });
 });
 
 /* ═══ 时间筛选 → 计算 execution_date ═══ */
@@ -318,25 +354,33 @@ function fmtD(d) { return d.getFullYear() + '-' + (d.getMonth()+1 < 10 ? '0' : '
 
 /* ═══ APPLY / CLEAR ═══ */
 async function applyFilters() {
-  fD = selVals('f-dept'); fA = selVals('f-adv');
+  fLine = selVals('f-line'); fSubLine = selVals('f-subline'); fGSys = selVals('f-gsys');
+  fBlock = selVals('f-block'); fGL1 = selVals('f-gl1'); fGAdv = selVals('f-gadv');
+  fA = selVals('f-adv');
   fFY = selVals('f-fy'); fYM = selVals('f-ym'); fFW = selVals('f-fw');
   renderTags();
   $('ftags').innerHTML = '<span class="fp-loading">⏳ 正在加载数据...</span>';
 
   var targetDate = computeExecDate() || origExecDate;
-  // 所有筛选都通过后端精确过滤
-  await fetchReport(targetDate, fD, fA);
+  await fetchReport(targetDate, {
+    advisors: fA,
+    filter_line: fLine,
+    filter_sub_line: fSubLine,
+    filter_group_sys: fGSys,
+    filter_biz_block: fBlock,
+    filter_group_l1: fGL1,
+    filter_group_advisor: fGAdv,
+  });
   renderTags();
 }
 
 async function clearFilters() {
-  ['f-dept','f-adv','f-fy','f-ym','f-fw'].forEach(function(id) {
+  ['f-line','f-subline','f-gsys','f-block','f-gl1','f-gadv','f-adv','f-fy','f-ym','f-fw'].forEach(function(id) {
     Array.from($(id).options).forEach(function(o) { o.selected = false; });
   });
-  fD = []; fA = []; fFY = []; fYM = []; fFW = [];
+  fLine=[]; fSubLine=[]; fGSys=[]; fBlock=[]; fGL1=[]; fGAdv=[]; fA=[]; fFY=[]; fYM=[]; fFW=[];
   // 恢复全量下拉选项
-  $('f-dept').innerHTML = ALL_DEPTS.map(function(d) { return '<option value="' + d + '">' + d + '</option>'; }).join('');
-  $('f-adv').innerHTML = ALL_ADVS.map(function(a) { return '<option value="' + a + '">' + a + '</option>'; }).join('');
+  buildOptions();
   renderTags();
   $('ftags').innerHTML = '<span class="fp-loading">⏳ 正在加载数据...</span>';
   await fetchReport(origExecDate);
@@ -344,11 +388,12 @@ async function clearFilters() {
 }
 
 function rmFilter(type, val) {
-  var map = {d:fD, a:fA, fy:fFY, ym:fYM, fw:fFW};
+  var map = {ln:fLine, sl:fSubLine, gs:fGSys, bk:fBlock, l1:fGL1, ga:fGAdv, a:fA, fy:fFY, ym:fYM, fw:fFW};
   map[type] = map[type].filter(function(v) { return v !== val; });
-  if (type==='d') fD=map.d; if (type==='a') fA=map.a;
-  if (type==='fy') fFY=map.fy; if (type==='ym') fYM=map.ym; if (type==='fw') fFW=map.fw;
-  var idMap = {d:'f-dept', a:'f-adv', fy:'f-fy', ym:'f-ym', fw:'f-fw'};
+  if(type==='ln')fLine=map.ln; if(type==='sl')fSubLine=map.sl; if(type==='gs')fGSys=map.gs;
+  if(type==='bk')fBlock=map.bk; if(type==='l1')fGL1=map.l1; if(type==='ga')fGAdv=map.ga;
+  if(type==='a')fA=map.a; if(type==='fy')fFY=map.fy; if(type==='ym')fYM=map.ym; if(type==='fw')fFW=map.fw;
+  var idMap = {ln:'f-line', sl:'f-subline', gs:'f-gsys', bk:'f-block', l1:'f-gl1', ga:'f-gadv', a:'f-adv', fy:'f-fy', ym:'f-ym', fw:'f-fw'};
   Array.from($(idMap[type]).options).forEach(function(o) { o.selected = map[type].indexOf(o.value) !== -1; });
   applyFilters();
 }
@@ -359,7 +404,12 @@ function renderTags() {
     return '<span class="fp-tag">' + lbl + ': <b>' + val + '</b>'
       + '<span class="x" onclick="rmFilter(&apos;' + type + '&apos;,&apos;' + val.replace(/'/g,'&apos;') + '&apos;)">×</span></span>';
   }
-  fD.forEach(function(v) { tags.push(mk('d', '部门', v.replace('广州前途',''))); });
+  fLine.forEach(function(v) { tags.push(mk('ln', '条线', v)); });
+  fSubLine.forEach(function(v) { tags.push(mk('sl', '二级条线', v)); });
+  fGSys.forEach(function(v) { tags.push(mk('gs', '分组(系统)', v)); });
+  fBlock.forEach(function(v) { tags.push(mk('bk', '板块', v)); });
+  fGL1.forEach(function(v) { tags.push(mk('l1', '一级分组', v)); });
+  fGAdv.forEach(function(v) { tags.push(mk('ga', '分组(顾问)', v)); });
   fA.forEach(function(v) { tags.push(mk('a', '顾问', v)); });
   fFY.forEach(function(v) { tags.push(mk('fy', '财年', v)); });
   fYM.forEach(function(v) { tags.push(mk('ym', '年月', v.slice(0,4)+'年'+v.slice(4)+'月')); });

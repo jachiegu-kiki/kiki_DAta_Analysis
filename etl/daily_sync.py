@@ -53,6 +53,7 @@ FILES = {
     # ─── PreData（手动/维度数据）───
     "staff":          (PREDATA_DIR, "职员表.xlsx",               "顾问部门",     0),
     "sign_group":     (PREDATA_DIR, "签约分组.xlsx",             "Sheet1",       0),
+    "group_dept_param": (PREDATA_DIR, "参数-分组部门.xlsx",       "Sheet1",       0),
     "history_sign":   (PREDATA_DIR, "历史数据.xlsx",             "签约明细",     0),  # A3
     "history_refund": (PREDATA_DIR, "历史数据.xlsx",             "退费",         0),  # R3
     "history_school": (PREDATA_DIR, "历史数据-学校.xlsx",        "签约金额按天", 0),  # B3
@@ -186,15 +187,19 @@ def load_staff_map():
     return name_to_group, email_to_name
 
 def load_sign_group():
-    """签约分组：合同号 → 分组部门（优先级1，本财年）"""
+    """签约分组：合同号 → 分组部门（系统口径）+ 分组部门（顾问口径）"""
     if "sign_group" in _dim_cache: return _dim_cache["sign_group"]
-    m = {}
+    m_sys, m_adv = {}, {}
     df = read_excel("sign_group")
     if df is not None:
         for _, r in df.dropna(subset=["合同号"]).iterrows():
-            m[cs(r["合同号"])] = cs(r["分组部门"])
-    _dim_cache["sign_group"] = m
-    return m
+            cn = cs(r["合同号"])
+            m_sys[cn] = cs(r["分组部门"])
+            adv_dept = cs(r.get("分组部门（顾问口径）"))
+            if adv_dept:
+                m_adv[cn] = adv_dept
+    _dim_cache["sign_group"] = (m_sys, m_adv)
+    return m_sys, m_adv
 
 def load_history_group():
     """历史数据签约明细：合同号 → 团队分组（优先级2，往年）"""
@@ -227,11 +232,11 @@ def load_subline_map():
     return m
 
 def get_group(contract_no: str, advisor: str) -> str:
-    """三级优先查找分组部门（第六章）"""
+    """三级优先查找分组部门-系统口径（第六章）"""
     cn = cs(contract_no)
-    # 优先级1：签约分组
-    sg = load_sign_group()
-    if cn in sg: return sg[cn]
+    # 优先级1：签约分组（系统口径）
+    sg_sys, _ = load_sign_group()
+    if cn in sg_sys: return sg_sys[cn]
     # 优先级2：历史数据团队分组
     hg = load_history_group()
     if cn in hg: return hg[cn]
@@ -241,6 +246,14 @@ def get_group(contract_no: str, advisor: str) -> str:
         nm, _ = load_staff_map()
         if adv in nm: return nm[adv]
     return "未知部门"
+
+def get_group_advisor(contract_no: str, advisor: str) -> str:
+    """查找分组部门-顾问口径：签约分组优先，回退到系统口径"""
+    cn = cs(contract_no)
+    _, sg_adv = load_sign_group()
+    if cn in sg_adv: return sg_adv[cn]
+    # 顾问口径无数据时，回退到系统口径
+    return get_group(contract_no, advisor)
 
 def get_subline(contract_no: str) -> str:
     """查 Sign_Details 获取二级条线名称（第五章 §5.3）"""
@@ -258,6 +271,7 @@ def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
         "advisor_name": cs(advisor), "original_dept": cs(dept),
         "line": cs(line), "sub_line": get_subline(cn),
         "secondary_group": get_group(cn, advisor),
+        "secondary_group_advisor": get_group_advisor(cn, advisor),
         "sign_biz_type": biz_type, "school": school,
         "gross_sign": cf(gross_sign), "source_system": source,
     }
@@ -434,6 +448,7 @@ def _refund_rec(refund_id, refund_date, contract_no="", advisor="",
         "advisor_name": cs(advisor), "original_dept": cs(dept),
         "line": cs(line), "sub_line": get_subline(contract_no),
         "secondary_group": get_group(contract_no, advisor),
+        "secondary_group_advisor": get_group_advisor(contract_no, advisor),
         "refund_biz_type": biz_type,
         "gross_refund": cf(gross_refund), "source_system": source,
     }
@@ -657,18 +672,55 @@ def sync_dim_target():
     print(f"  ✓ {len(recs)} 条目标")
 
 def sync_dim_contract_group():
-    """同步合同分组"""
+    """同步合同分组（双口径：系统口径 + 顾问口径）"""
     df = read_excel("sign_group")
     if df is None: return
-    df = df.dropna(subset=["合同号","分组部门"]).drop_duplicates(subset=["合同号"])
+    df = df.dropna(subset=["合同号"]).drop_duplicates(subset=["合同号"])
     with get_engine().begin() as conn:
         for i, (_, r) in enumerate(df.iterrows()):
             conn.execute(text("""
-                INSERT INTO dim_contract_group (contract_no,group_dept)
-                VALUES (:cn,:gd) ON CONFLICT (contract_no) DO UPDATE SET group_dept=EXCLUDED.group_dept, updated_at=NOW()
-            """), {"cn": cs(r["合同号"]), "gd": cs(r["分组部门"])})
+                INSERT INTO dim_contract_group (contract_no,group_dept,actual_advisor,group_dept_advisor)
+                VALUES (:cn,:gd,:aa,:gda)
+                ON CONFLICT (contract_no) DO UPDATE SET
+                  group_dept=EXCLUDED.group_dept,
+                  actual_advisor=EXCLUDED.actual_advisor,
+                  group_dept_advisor=EXCLUDED.group_dept_advisor,
+                  updated_at=NOW()
+            """), {
+                "cn": cs(r["合同号"]),
+                "gd": cs(r.get("分组部门", "")),
+                "aa": cs(r.get("实际签约顾问", "")),
+                "gda": cs(r.get("分组部门（顾问口径）", "")),
+            })
     stats["dim_contract_group"] = len(df)
-    print(f"  ✓ {len(df)} 条映射")
+    print(f"  ✓ {len(df)} 条映射（含顾问口径）")
+
+def sync_dim_group_dept():
+    """同步分组部门维度表（参数-分组部门.xlsx）"""
+    df = read_excel("group_dept_param")
+    if df is None:
+        print("  ✗ 参数-分组部门.xlsx 未找到")
+        return
+    with get_engine().begin() as conn:
+        conn.execute(text("DELETE FROM dim_group_dept"))
+        for _, r in df.iterrows():
+            sg = cs(r.get("二级分组部门"))
+            if not sg: continue
+            conn.execute(text("""
+                INSERT INTO dim_group_dept (secondary_group,secondary_group_tidy,primary_group,biz_block)
+                VALUES (:sg,:sgt,:pg,:bb)
+                ON CONFLICT (secondary_group) DO UPDATE SET
+                  secondary_group_tidy=EXCLUDED.secondary_group_tidy,
+                  primary_group=EXCLUDED.primary_group,
+                  biz_block=EXCLUDED.biz_block
+            """), {
+                "sg": sg,
+                "sgt": cs(r.get("二级分组部门（整理）", "")),
+                "pg": cs(r.get("一级分组部门", "")),
+                "bb": cs(r.get("业务板块", "")),
+            })
+    stats["dim_group_dept"] = len(df)
+    print(f"  ✓ {len(df)} 条分组部门层级")
 
 # ═══════════════════════════════════════════════════════════════
 # §8  写入数据库
@@ -696,9 +748,9 @@ def write_signing(records):
                 conn.execute(text("""
                     INSERT INTO fact_signing
                       (contract_no,sign_date,advisor_name,original_dept,line,sub_line,
-                       secondary_group,sign_biz_type,school,gross_sign,source_system)
+                       secondary_group,secondary_group_advisor,sign_biz_type,school,gross_sign,source_system)
                     VALUES (:contract_no,:sign_date,:advisor_name,:original_dept,:line,:sub_line,
-                            :secondary_group,:sign_biz_type,:school,:gross_sign,:source_system)
+                            :secondary_group,:secondary_group_advisor,:sign_biz_type,:school,:gross_sign,:source_system)
                 """), rec)
             total_ins += len(recs)
             print(f"    {source}: 清除旧数据 → 写入 {len(recs)} 条")
@@ -721,9 +773,9 @@ def write_refund(records):
                 conn.execute(text("""
                     INSERT INTO fact_refund
                       (refund_id,refund_date,contract_no,advisor_name,original_dept,
-                       line,sub_line,secondary_group,refund_biz_type,gross_refund,source_system)
+                       line,sub_line,secondary_group,secondary_group_advisor,refund_biz_type,gross_refund,source_system)
                     VALUES (:refund_id,:refund_date,:contract_no,:advisor_name,:original_dept,
-                            :line,:sub_line,:secondary_group,:refund_biz_type,:gross_refund,:source_system)
+                            :line,:sub_line,:secondary_group,:secondary_group_advisor,:refund_biz_type,:gross_refund,:source_system)
                 """), rec)
             total_ins += len(recs)
             print(f"    {source}: 清除旧数据 → 写入 {len(recs)} 条")
@@ -780,7 +832,7 @@ def write_fund_snapshot(records):
 # ═══════════════════════════════════════════════════════════════
 def verify():
     sep("同步结果")
-    tables = ["dim_advisor","dim_monthly_target","dim_contract_group",
+    tables = ["dim_advisor","dim_monthly_target","dim_contract_group","dim_group_dept",
               "fact_signing","fact_refund","fact_receipt","fact_fund_snapshot"]
     with get_engine().connect() as conn:
         for t in tables:
@@ -819,6 +871,7 @@ if __name__ == "__main__":
         sync_dim_advisor()
         sync_dim_target()
         sync_dim_contract_group()
+        sync_dim_group_dept()
 
         # 签约（所有模块合并后写入）
         sep("签约数据")

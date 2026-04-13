@@ -12,7 +12,7 @@
 #login-screen{position:fixed;inset:0;z-index:300;display:flex;align-items:center;justify-content:center;background:linear-gradient(145deg,var(--grn3) 0%,var(--grn2) 45%,var(--grn) 100%)}#login-screen::before{content:'';position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(-52deg,transparent,transparent 38px,rgba(255,255,255,.025) 38px,rgba(255,255,255,.025) 39px)}.lc{position:relative;width:420px;background:var(--white);border-radius:var(--r3);box-shadow:0 32px 80px rgba(0,0,0,.38);overflow:hidden;animation:lc-in .45s cubic-bezier(.25,.8,.25,1)}@keyframes lc-in{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}.lc-top{padding:30px 36px 26px;background:linear-gradient(135deg,var(--grn2),var(--grn));position:relative;overflow:hidden}.lc-top::after{content:'途';position:absolute;right:-10px;bottom:-28px;font-family:var(--serif);font-size:130px;font-weight:900;color:rgba(255,255,255,.07);line-height:1;pointer-events:none}.lc-logo{display:flex;align-items:center;gap:12px}.lc-em{width:44px;height:44px;border-radius:11px;flex-shrink:0;background:linear-gradient(135deg,var(--org),var(--org2));display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:20px;font-weight:900;color:#fff;box-shadow:0 4px 14px rgba(244,121,32,.45)}.lc-brand{font-family:var(--serif);font-size:18px;font-weight:700;color:#fff;letter-spacing:2px;margin-bottom:2px}.lc-sub{font-size:11px;color:rgba(255,255,255,.6);letter-spacing:.5px}.lc-body{padding:26px 36px 30px}.lc-hint{background:var(--grn-l);border:1px solid rgba(0,112,60,.2);border-radius:var(--r);padding:10px 14px;margin-bottom:20px;font-size:12px;color:var(--grn2);line-height:1.85}.lc-hint code{font-family:var(--mono);font-size:11.5px;background:rgba(0,112,60,.12);padding:1px 6px;border-radius:3px}.lc-lbl{font-size:11px;color:var(--t2);letter-spacing:.8px;text-transform:uppercase;margin-bottom:6px;display:block;font-weight:600}.lc-inp{width:100%;background:var(--s1);border:1.5px solid var(--bd);border-radius:var(--r);padding:11px 14px;color:var(--t0);font-size:14px;outline:none;margin-bottom:14px;transition:border-color .2s,box-shadow .2s}.lc-inp:focus{border-color:var(--grn);box-shadow:0 0 0 3px var(--grn-m)}.lc-btn{width:100%;padding:13px;border-radius:var(--r);font-size:15px;font-weight:700;letter-spacing:1.5px;color:#fff;background:linear-gradient(135deg,var(--grn),var(--grn2));box-shadow:0 4px 14px var(--grn-m);transition:opacity .2s,transform .1s}.lc-btn:hover{opacity:.9;transform:translateY(-1px)}.lc-err{color:var(--dn);font-size:12px;text-align:center;margin-top:10px;min-height:16px}
 #topbar{position:sticky;top:0;z-index:100;height:56px;display:flex;align-items:center;padding:0 26px;gap:14px;background:var(--grn2);box-shadow:0 2px 8px rgba(0,0,0,.2)}.tb-em{width:32px;height:32px;border-radius:8px;flex-shrink:0;background:linear-gradient(135deg,var(--org),var(--org2));display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:15px;font-weight:900;color:#fff}.tb-name{font-family:var(--serif);font-size:16px;font-weight:700;color:#fff;letter-spacing:2px;white-space:nowrap}.tb-sep{width:1px;height:18px;background:rgba(255,255,255,.2);flex-shrink:0}.tb-meta{display:flex;gap:18px;flex-wrap:wrap}.tb-pill{font-size:11.5px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:4px}.tb-pill b{color:#fff;font-family:var(--mono);font-size:11.5px}.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}.tb-ts{font-size:11px;color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:3px 11px}.tb-user{font-size:12px;color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:4px 13px;transition:all .2s}.tb-user:hover{background:rgba(255,255,255,.1);color:#fff}
 .demo-band{background:linear-gradient(90deg,var(--org-l),rgba(255,243,234,.4),var(--org-l));border-bottom:1px solid rgba(244,121,32,.2);padding:7px 26px;font-size:11.5px;color:var(--org2);display:flex;align-items:center;gap:8px}.demo-dot{width:7px;height:7px;border-radius:50%;background:var(--org);animation:pulse 2s infinite;flex-shrink:0}@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
-.fp-wrap{background:var(--white);border-bottom:2px solid var(--grn)}.fp-inner{padding:14px 26px;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}.fp-group{display:flex;flex-direction:column;gap:5px}.fp-lbl{font-size:10px;color:var(--t2);font-weight:700;letter-spacing:.9px;text-transform:uppercase}select[multiple].fp-sel{appearance:none;-webkit-appearance:none;background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:4px 6px;color:var(--t0);font-size:12.5px;font-family:var(--sans);outline:none;cursor:pointer;height:78px;transition:border-color .2s,box-shadow .2s}select[multiple].fp-sel:focus{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}select[multiple].fp-sel option{padding:3px 8px;border-radius:3px}select[multiple].fp-sel option:checked{background:var(--grn-m);color:var(--grn2);font-weight:600}.fp-btns{display:flex;gap:8px;align-items:flex-end;padding-bottom:1px}.fp-apply{padding:8px 18px;background:var(--grn);color:#fff;border-radius:var(--r);font-size:12.5px;font-weight:700;box-shadow:0 2px 6px var(--grn-m);transition:opacity .2s,transform .1s}.fp-apply:hover{opacity:.9;transform:translateY(-1px)}.fp-clear{padding:8px 14px;border:1.5px solid var(--bd2);color:var(--t2);border-radius:var(--r);font-size:12.5px;transition:all .2s}.fp-clear:hover{border-color:var(--dn);color:var(--dn)}.fp-tags{min-height:32px;padding:5px 26px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--bd);background:var(--s1)}.fp-tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--grn-m);color:var(--grn2);border:1px solid rgba(0,112,60,.22);border-radius:20px;padding:3px 10px}.fp-tag .x{cursor:pointer;opacity:.6;font-size:13px;line-height:1}.fp-tag .x:hover{opacity:1;color:var(--dn)}.fp-none{font-size:11.5px;color:var(--t3);font-style:italic}
+.fp-wrap{background:var(--white);border-bottom:2px solid var(--grn);position:relative;z-index:10}.fp-inner{padding:14px 26px;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}.fp-group{display:flex;flex-direction:column;gap:5px}.fp-lbl{font-size:10px;color:var(--t2);font-weight:700;letter-spacing:.9px;text-transform:uppercase}select[multiple].fp-sel{appearance:none;-webkit-appearance:none;background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:4px 6px;color:var(--t0);font-size:12.5px;font-family:var(--sans);outline:none;cursor:pointer;height:78px;transition:border-color .2s,box-shadow .2s}select[multiple].fp-sel:focus{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}select[multiple].fp-sel option{padding:3px 8px;border-radius:3px}select[multiple].fp-sel option:checked{background:var(--grn-m);color:var(--grn2);font-weight:600}.fp-btns{display:flex;gap:8px;align-items:flex-end;padding-bottom:1px}.fp-apply{padding:8px 18px;background:var(--grn);color:#fff;border-radius:var(--r);font-size:12.5px;font-weight:700;box-shadow:0 2px 6px var(--grn-m);transition:opacity .2s,transform .1s}.fp-apply:hover{opacity:.9;transform:translateY(-1px)}.fp-clear{padding:8px 14px;border:1.5px solid var(--bd2);color:var(--t2);border-radius:var(--r);font-size:12.5px;transition:all .2s}.fp-clear:hover{border-color:var(--dn);color:var(--dn)}.fp-tags{min-height:32px;padding:5px 26px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--bd);background:var(--s1)}.fp-tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--grn-m);color:var(--grn2);border:1px solid rgba(0,112,60,.22);border-radius:20px;padding:3px 10px}.fp-tag .x{cursor:pointer;opacity:.6;font-size:13px;line-height:1}.fp-tag .x:hover{opacity:1;color:var(--dn)}.fp-none{font-size:11.5px;color:var(--t3);font-style:italic}
 .fp-loading{font-size:11.5px;color:var(--org2);font-weight:600;animation:pulse 1s infinite}
 main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30px}.sec-hd{display:flex;align-items:center;gap:12px;margin-bottom:18px}.sec-ttl{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--grn2);letter-spacing:1.5px;white-space:nowrap;display:flex;align-items:center;gap:8px}.sec-ttl::before{content:'';display:block;width:4px;height:16px;background:var(--org);border-radius:2px;flex-shrink:0}.sec-line{flex:1;height:1px;background:var(--bd)}.sec-tag{font-size:10px;font-family:var(--mono);color:var(--t3);border:1px solid var(--bd);border-radius:3px;padding:2px 7px}
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}.kc{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r2);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,box-shadow .2s,transform .15s}.kc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grn);border-radius:var(--r2) var(--r2) 0 0}.kc:hover{border-color:var(--grn);box-shadow:var(--shadow-md);transform:translateY(-1px)}.kc-lbl{font-size:10.5px;color:var(--t2);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;font-weight:600}.kc-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--t0);margin-bottom:8px;line-height:1}.kc-val sup{font-size:13px;color:var(--t2);font-weight:400;margin-left:2px}.kc-val.neg{color:var(--dn)}.kc-sub{font-size:11px;color:var(--t3);margin-bottom:8px;font-family:var(--mono)}.kc-bd{display:flex;flex-wrap:wrap;gap:5px}.bdg{font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:4px;font-weight:500}.bdg.up{color:var(--up);background:var(--up-l);border:1px solid rgba(0,112,60,.2)}.bdg.dn{color:var(--dn);background:var(--dn-l);border:1px solid rgba(217,48,37,.2)}.bdg.nt{color:var(--t2);background:var(--s1);border:1px solid var(--bd)}.pg{margin-top:12px}.pg-hd{display:flex;justify-content:space-between;font-size:10.5px;color:var(--t2);margin-bottom:4px;font-family:var(--mono)}.pg-track{height:10px;background:var(--s2);border-radius:5px;position:relative}.pg-bar{height:100%;border-radius:5px;transition:width .7s cubic-bezier(.25,.8,.25,1)}.pg-bar.hit{background:linear-gradient(90deg,var(--grn),#00a858)}.pg-bar.miss{background:linear-gradient(90deg,var(--org),#f5a050)}.pg-marker{position:absolute;top:-3px;width:2.5px;height:16px;background:var(--dn);border-radius:1px;z-index:2;transition:left .7s cubic-bezier(.25,.8,.25,1)}.pg-marker::after{content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:7px;height:7px;background:var(--dn);border-radius:50%;border:1.5px solid var(--white);box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -82,6 +82,8 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
   .kpi-grid{grid-template-columns:repeat(2,1fr)}
 }
 @media(min-width:769px){.mob-meta{display:none !important}}
+/* ═══ Custom Dropdown Checkboxes ═══ */
+.dd{position:relative;min-width:110px}.dd-btn{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:6px 10px;font-size:12.5px;color:var(--t0);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;transition:border-color .2s;white-space:nowrap;user-select:none;min-height:33px}.dd-btn:hover{border-color:var(--grn)}.dd.open .dd-btn{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}.dd-btn.has-sel{background:var(--grn-l);border-color:rgba(0,112,60,.35);color:var(--grn2);font-weight:600}.dd-arrow{font-size:9px;color:var(--t3);transition:transform .2s}.dd.open .dd-arrow{transform:rotate(180deg)}.dd-list{display:none;position:absolute;top:100%;left:0;min-width:100%;max-height:220px;overflow-y:auto;background:var(--white);border:1.5px solid var(--grn);border-radius:0 0 var(--r) var(--r);box-shadow:0 8px 24px rgba(0,40,0,.15);z-index:50;margin-top:-1px}.dd.open .dd-list{display:block}.dd-item{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;cursor:pointer;transition:background .1s;white-space:nowrap}.dd-item:hover{background:var(--grn-l)}.dd-item input[type=checkbox]{accent-color:var(--grn);width:14px;height:14px;cursor:pointer;flex-shrink:0}.dd-item.checked{background:var(--grn-m);font-weight:600;color:var(--grn2)}
 </style>
 </head>
 <body>
@@ -93,24 +95,25 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
   </div>
   <div class="fp-wrap"><div class="fp-inner">
     <div class="fp-group"><div class="fp-lbl" style="color:#e8b055;font-weight:700">▎按条线筛选</div></div>
-    <div class="fp-group"><div class="fp-lbl">条线</div><select class="fp-sel" id="f-line" multiple size="4" style="width:120px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">二级条线</div><select class="fp-sel" id="f-subline" multiple size="4" style="width:140px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">分组部门(系统)</div><select class="fp-sel" id="f-gsys" multiple size="4" style="width:155px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">条线</div><div class="dd" id="f-line"><div class="dd-btn" onclick="ddToggle('f-line')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">二级条线</div><div class="dd" id="f-subline"><div class="dd-btn" onclick="ddToggle('f-subline')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">分组部门(系统)</div><div class="dd" id="f-gsys"><div class="dd-btn" onclick="ddToggle('f-gsys')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
     <div class="fp-group" style="border-left:2px solid #444;padding-left:12px"><div class="fp-lbl" style="color:#55b0e8;font-weight:700">▎按团队筛选</div></div>
-    <div class="fp-group"><div class="fp-lbl">业务板块</div><select class="fp-sel" id="f-block" multiple size="4" style="width:120px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">一级分组部门</div><select class="fp-sel" id="f-gl1" multiple size="4" style="width:140px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">分组部门(顾问)</div><select class="fp-sel" id="f-gadv" multiple size="4" style="width:155px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">业务板块</div><div class="dd" id="f-block"><div class="dd-btn" onclick="ddToggle('f-block')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">一级分组部门</div><div class="dd" id="f-gl1"><div class="dd-btn" onclick="ddToggle('f-gl1')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">分组部门(顾问)</div><div class="dd" id="f-gadv"><div class="dd-btn" onclick="ddToggle('f-gadv')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
     <div class="fp-group" style="border-left:2px solid #444;padding-left:12px"><div class="fp-lbl" style="color:#aaa;font-weight:700">▎通用</div></div>
-    <div class="fp-group"><div class="fp-lbl">顾问（多选）</div><select class="fp-sel" id="f-adv" multiple size="4" style="width:150px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">财年（多选）</div><select class="fp-sel" id="f-fy" multiple size="4" style="width:135px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">自然年月 YYYYMM（多选）</div><select class="fp-sel" id="f-ym" multiple size="4" style="width:158px"></select></div>
-    <div class="fp-group"><div class="fp-lbl">财周（多选）</div><select class="fp-sel" id="f-fw" multiple size="4" style="width:162px"></select></div>
+    <div class="fp-group"><div class="fp-lbl">业务类型</div><div class="dd" id="f-btype"><div class="dd-btn" onclick="ddToggle('f-btype')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">顾问</div><div class="dd" id="f-adv"><div class="dd-btn" onclick="ddToggle('f-adv')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">财年</div><div class="dd" id="f-fy"><div class="dd-btn" onclick="ddToggle('f-fy')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">年月</div><div class="dd" id="f-ym"><div class="dd-btn" onclick="ddToggle('f-ym')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
+    <div class="fp-group"><div class="fp-lbl">财周</div><div class="dd" id="f-fw"><div class="dd-btn" onclick="ddToggle('f-fw')">全部 <span class="dd-arrow">▾</span></div><div class="dd-list"></div></div></div>
     <div class="fp-btns"><button class="fp-apply" onclick="applyFilters()">应用筛选</button><button class="fp-clear" onclick="clearFilters()">清除全部</button></div>
   </div><div class="fp-tags" id="ftags"><span class="fp-none">暂无筛选条件 · 显示当前权限下全量数据</span></div></div>
   <main id="main" class="fade-in">
     <div class="sec"><div class="sec-hd"><div class="sec-ttl">收 款 KPI</div><div class="sec-line"></div><div class="sec-tag">PAYMENT</div></div><div class="kpi-grid" id="kpi-pay"></div></div>
     <div class="sec"><div class="sec-hd"><div class="sec-ttl">净 签 KPI</div><div class="sec-line"></div><div class="sec-tag">NET SIGNING</div></div><div class="kpi-grid" id="kpi-sign"></div></div>
-    <div class="sec"><div class="sec-hd"><div class="sec-ttl">潜 在 签 约</div><div class="sec-line"></div><div class="sec-tag">POTENTIAL SIGNING</div></div><div class="pc-row" id="pc-row"></div><div class="tbl-scroll"><table class="pt"><thead><tr><th style="width:230px">部门 / 合同明细</th><th style="width:120px">签约顾问</th><th class="r" style="width:155px">已收款未盖章（万）</th><th class="r" style="width:130px">未认款（万）</th></tr></thead><tbody id="pt-body"></tbody><tfoot id="pt-foot"></tfoot></table></div></div>
+    <div class="sec"><div class="sec-hd"><div class="sec-ttl">潜 在 签 约</div><div class="sec-line"></div><div class="sec-tag">POTENTIAL SIGNING</div></div><div class="pc-row" id="pc-row"></div><div class="tbl-scroll"><table class="pt"><thead><tr><th style="width:230px">二级分组部门 / 合同明细</th><th style="width:120px">签约顾问</th><th class="r" style="width:155px">已收款未盖章（万）</th><th class="r" style="width:130px">未认款（万）</th></tr></thead><tbody id="pt-body"></tbody><tfoot id="pt-foot"></tfoot></table></div></div>
     <div class="sec"><div class="sec-hd"><div class="sec-ttl">顾 问 排 行</div><div class="sec-line"></div><div class="sec-tag">ADVISOR RANKING · 当月</div></div><div class="av-grid"><div class="av-panel"><div class="av-hd"><div class="av-ttl">净签排行榜</div><div class="av-cnt" id="ns-cnt"></div></div><table class="rt"><thead><tr><th>排名</th><th>顾问</th><th class="r">净签（万）</th><th class="r">毛签</th><th class="r">退费</th></tr></thead><tbody id="ns-body"></tbody></table><button class="tgl-btn" id="ns-btn" onclick="tglAdv('ns')"><span id="ns-txt">↓ 展开全部</span></button></div><div class="av-panel"><div class="av-hd"><div class="av-ttl">百万顾问收款榜</div><div class="av-cnt" id="mm-cnt"></div></div><table class="rt"><thead><tr><th>排名</th><th>顾问</th><th class="r">收款（万）</th><th class="r">毛签</th><th class="r">待处理</th></tr></thead><tbody id="mm-body"></tbody></table><button class="tgl-btn" id="mm-btn" onclick="tglAdv('mm')"><span id="mm-txt">↓ 展开全部</span></button></div></div></div>
   </main>
 </div>
@@ -152,7 +155,12 @@ document.addEventListener('keydown', function(e) { if (e.key === 'Enter' && $('l
 
 function doLogout() {
   TOKEN = ''; CU = null; RAW = null; origExecDate = null;
+  // Reset filter state
+  fLine=[]; fSubLine=[]; fGSys=[]; fBlock=[]; fGL1=[]; fGAdv=[]; fBType=[]; fA=[]; fFY=[]; fYM=[]; fFW=[];
+  FO = {}; ALL_ADVS = []; nsAll = false; mmAll = false; expanded.clear();
   localStorage.removeItem('qt'); localStorage.removeItem('qt_u');
+  // Reset filter tags bar
+  $('ftags').innerHTML = '<span class="fp-none">暂无筛选条件 · 显示当前权限下全量数据</span>';
   $('dash').style.display = 'none'; $('login-screen').style.display = 'flex';
 }
 
@@ -169,6 +177,7 @@ async function fetchReport(execDate, filterParams) {
   if (fp.filter_biz_block && fp.filter_biz_block.length) qs.push('filter_biz_block=' + encodeURIComponent(fp.filter_biz_block.join(',')));
   if (fp.filter_group_l1 && fp.filter_group_l1.length) qs.push('filter_group_l1=' + encodeURIComponent(fp.filter_group_l1.join(',')));
   if (fp.filter_group_advisor && fp.filter_group_advisor.length) qs.push('filter_group_advisor=' + encodeURIComponent(fp.filter_group_advisor.join(',')));
+  if (fp.filter_biz_type && fp.filter_biz_type.length) qs.push('filter_biz_type=' + encodeURIComponent(fp.filter_biz_type.join(',')));
   if (qs.length) url += '?' + qs.join('&');
 
   try {
@@ -192,6 +201,8 @@ async function fetchReport(execDate, filterParams) {
 
     $('login-screen').style.display = 'none';
     $('dash').style.display = 'block';
+    // Only ADMIN can trigger ETL — hide button for other roles
+    $('btn-etl').style.display = (CU && CU.role === 'ADMIN') ? '' : 'none';
     $('demo-text').textContent = '数据来源：FastAPI + PostgreSQL · 报表日期 ' + data.header.execution_date;
     renderAll();
   } catch(e) { console.error('fetch error:', e); $('lerr').textContent = '数据加载失败'; }
@@ -200,14 +211,78 @@ async function fetchReport(execDate, filterParams) {
 if (TOKEN && CU) { fetchReport(); } else { $('login-screen').style.display = 'flex'; }
 
 /* ═══ FILTER STATE ═══ */
-var fLine=[], fSubLine=[], fGSys=[], fBlock=[], fGL1=[], fGAdv=[], fA=[], fFY=[], fYM=[], fFW=[];
+var fLine=[], fSubLine=[], fGSys=[], fBlock=[], fGL1=[], fGAdv=[], fBType=[], fA=[], fFY=[], fYM=[], fFW=[];
 var nsAll = false, mmAll = false;
 var expanded = new Set();
 
-function selVals(id) { return Array.from($(id).selectedOptions).map(function(o){return o.value}); }
+/* ═══ Custom Dropdown Engine ═══ */
+function escHtml(s) { var d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function opts(arr) { return arr.map(function(v){ return '<option value="'+v+'">'+v+'</option>'; }).join(''); }
-function optsObj(arr) { return arr.map(function(o){ return '<option value="'+o.value+'">'+o.value+'</option>'; }).join(''); }
+function ddToggle(id) {
+  var el = $(id);
+  var wasOpen = el.classList.contains('open');
+  // close all
+  document.querySelectorAll('.dd.open').forEach(function(d) { d.classList.remove('open'); });
+  if (!wasOpen) el.classList.add('open');
+}
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.dd')) {
+    document.querySelectorAll('.dd.open').forEach(function(d) { d.classList.remove('open'); });
+  }
+});
+
+function ddSetItems(id, items) {
+  var list = $(id).querySelector('.dd-list');
+  list.innerHTML = items.map(function(v) {
+    var ev = escHtml(v);
+    var ea = escAttr(v);
+    return '<label class="dd-item" data-val="' + ea + '"><input type="checkbox" value="' + ea + '" onchange="ddOnChange(\'' + id + '\')"><span>' + ev + '</span></label>';
+  }).join('');
+  ddUpdateBtn(id);
+}
+
+function ddGetSelected(id) {
+  var checks = $(id).querySelectorAll('.dd-item input:checked');
+  return Array.from(checks).map(function(c) { return c.value; });
+}
+
+function ddClearAll(id) {
+  $(id).querySelectorAll('.dd-item input').forEach(function(c) { c.checked = false; c.parentElement.classList.remove('checked'); });
+  ddUpdateBtn(id);
+}
+
+function ddUpdateBtn(id) {
+  var sel = ddGetSelected(id);
+  var btn = $(id).querySelector('.dd-btn');
+  if (sel.length === 0) {
+    btn.innerHTML = '全部 <span class="dd-arrow">▾</span>';
+    btn.classList.remove('has-sel');
+  } else if (sel.length === 1) {
+    btn.innerHTML = '<span style="max-width:100px;overflow:hidden;text-overflow:ellipsis">' + escHtml(sel[0]) + '</span> <span class="dd-arrow">▾</span>';
+    btn.classList.add('has-sel');
+  } else {
+    btn.innerHTML = sel.length + '项已选 <span class="dd-arrow">▾</span>';
+    btn.classList.add('has-sel');
+  }
+  // update checked class
+  $(id).querySelectorAll('.dd-item').forEach(function(item) {
+    var cb = item.querySelector('input');
+    if (cb.checked) item.classList.add('checked'); else item.classList.remove('checked');
+  });
+}
+
+function ddOnChange(id) {
+  ddUpdateBtn(id);
+  // trigger cascade — pass source so we don't rebuild the triggering dropdown
+  if (id === 'f-line')    cascadeLine('f-line');
+  if (id === 'f-subline') cascadeLine('f-subline');
+  if (id === 'f-block')   cascadeTeam('f-block');
+  if (id === 'f-gl1')     cascadeTeam('f-gl1');
+}
+
+function opts(arr) { return arr; }
+function optsObj(arr) { return arr.map(function(o){ return o.value; }); }
 
 /* ═══ 构建筛选器选项 ═══ */
 function buildOptions() {
@@ -216,36 +291,39 @@ function buildOptions() {
   var curY = parseInt(ed.slice(0,4)), curM = parseInt(ed.slice(5,7));
 
   // 按条线筛选
-  $('f-line').innerHTML = opts(FO.lines || []);
-  $('f-subline').innerHTML = optsObj(FO.sub_lines || []);
-  $('f-gsys').innerHTML = optsObj(FO.group_sys || []);
+  ddSetItems('f-line', FO.lines || []);
+  ddSetItems('f-subline', optsObj(FO.sub_lines || []));
+  ddSetItems('f-gsys', optsObj(FO.group_sys || []));
 
   // 按团队筛选
-  $('f-block').innerHTML = opts(FO.biz_blocks || []);
-  $('f-gl1').innerHTML = optsObj(FO.group_l1 || []);
-  $('f-gadv').innerHTML = optsObj(FO.group_advisor || []);
+  ddSetItems('f-block', FO.biz_blocks || []);
+  ddSetItems('f-gl1', optsObj(FO.group_l1 || []));
+  ddSetItems('f-gadv', optsObj(FO.group_advisor || []));
+
+  // 业务类型
+  ddSetItems('f-btype', FO.biz_types || ['留学', '多语']);
 
   // 顾问
-  $('f-adv').innerHTML = opts(ALL_ADVS);
+  ddSetItems('f-adv', ALL_ADVS);
 
   // 财年
   var fyYear = curM >= 6 ? curY + 1 : curY;
-  var fyHtml = '';
+  var fyArr = [];
   for (var y = fyYear; y >= fyYear - 3; y--) {
-    fyHtml += '<option value="FY' + y + '">FY' + y + (y === fyYear ? '（当前）' : '') + '</option>';
+    fyArr.push('FY' + y + (y === fyYear ? '（当前）' : ''));
   }
-  $('f-fy').innerHTML = fyHtml;
+  ddSetItems('f-fy', fyArr);
 
   // 年月
-  var ymHtml = '';
+  var ymArr = [];
   for (var yy = curY; yy >= curY - 1; yy--) {
     var maxM = yy === curY ? curM : 12;
     for (var mm = maxM; mm >= 1; mm--) {
       var v = yy + '' + (mm < 10 ? '0' : '') + mm;
-      ymHtml += '<option value="' + v + '">' + v.slice(0,4) + '年' + v.slice(4) + '月</option>';
+      ymArr.push(v);
     }
   }
-  $('f-ym').innerHTML = ymHtml;
+  ddSetItems('f-ym', ymArr);
 
   // 财周
   var fwNum = RAW.header.fiscal_week_number;
@@ -255,71 +333,71 @@ function buildOptions() {
     var _fwe = new Date(_fy); _fwe.setDate(_fwe.getDate() + _dts);
     fwNum = _d <= _fwe ? 1 : 2 + Math.floor((_d - _fwe - 86400000) / 604800000);
   }
-  var fwHtml = '';
+  var fwArr = [];
   for (var w = fwNum; w >= 1; w--) {
-    fwHtml += '<option value="FW' + fyYear + '-' + w + '">FW' + fyYear + '-' + w + (w === fwNum ? '（本周）' : '') + '</option>';
+    fwArr.push('FW' + fyYear + '-' + w + (w === fwNum ? '（本周）' : ''));
   }
-  $('f-fw').innerHTML = fwHtml;
+  ddSetItems('f-fw', fwArr);
 }
 
-/* ═══ 级联联动：选父级自动过滤子级下拉列表 ═══ */
-function cascadeFilter() {
-  // 按条线级联：条线 → 二级条线 → 分组部门(系统)
-  var selLines = selVals('f-line');
+/* ═══ 级联联动 ═══ */
+function cascadeLine(source) {
+  var selLines = ddGetSelected('f-line');
   var slAll = FO.sub_lines || [];
   var gsAll = FO.group_sys || [];
-  if (selLines.length > 0) {
-    var lineSet = new Set(selLines);
-    var filtered = slAll.filter(function(o){ return lineSet.has(o.parent); });
-    $('f-subline').innerHTML = optsObj(filtered);
-  } else {
-    $('f-subline').innerHTML = optsObj(slAll);
+  // Only rebuild f-subline when triggered by f-line (parent changed), not when f-subline itself triggered
+  if (source === 'f-line') {
+    if (selLines.length > 0) {
+      var lineSet = new Set(selLines);
+      ddSetItems('f-subline', slAll.filter(function(o){ return lineSet.has(o.parent); }).map(function(o){return o.value;}));
+    } else {
+      ddSetItems('f-subline', slAll.map(function(o){return o.value;}));
+    }
   }
-  var selSL = selVals('f-subline');
+  // Always rebuild f-gsys based on current selections
+  var selSL = ddGetSelected('f-subline');
   if (selSL.length > 0) {
     var slSet = new Set(selSL);
-    $('f-gsys').innerHTML = optsObj(gsAll.filter(function(o){ return slSet.has(o.parent); }));
+    ddSetItems('f-gsys', gsAll.filter(function(o){ return slSet.has(o.parent); }).map(function(o){return o.value;}));
   } else if (selLines.length > 0) {
-    var validSL = new Set((FO.sub_lines||[]).filter(function(o){ return new Set(selLines).has(o.parent); }).map(function(o){return o.value}));
-    $('f-gsys').innerHTML = optsObj(gsAll.filter(function(o){ return validSL.has(o.parent); }));
+    var validSL = new Set(slAll.filter(function(o){ return new Set(selLines).has(o.parent); }).map(function(o){return o.value;}));
+    ddSetItems('f-gsys', gsAll.filter(function(o){ return validSL.has(o.parent); }).map(function(o){return o.value;}));
   } else {
-    $('f-gsys').innerHTML = optsObj(gsAll);
-  }
-
-  // 按团队级联：业务板块 → 一级分组部门 → 分组部门(顾问)
-  var selBlocks = selVals('f-block');
-  var l1All = FO.group_l1 || [];
-  var gaAll = FO.group_advisor || [];
-  if (selBlocks.length > 0) {
-    var bSet = new Set(selBlocks);
-    $('f-gl1').innerHTML = optsObj(l1All.filter(function(o){ return bSet.has(o.parent); }));
-  } else {
-    $('f-gl1').innerHTML = optsObj(l1All);
-  }
-  var selL1 = selVals('f-gl1');
-  if (selL1.length > 0) {
-    var l1Set = new Set(selL1);
-    $('f-gadv').innerHTML = optsObj(gaAll.filter(function(o){ return l1Set.has(o.parent); }));
-  } else if (selBlocks.length > 0) {
-    var validL1 = new Set(l1All.filter(function(o){ return new Set(selBlocks).has(o.parent); }).map(function(o){return o.value}));
-    $('f-gadv').innerHTML = optsObj(gaAll.filter(function(o){ return validL1.has(o.parent); }));
-  } else {
-    $('f-gadv').innerHTML = optsObj(gaAll);
+    ddSetItems('f-gsys', gsAll.map(function(o){return o.value;}));
   }
 }
 
-// 实时联动
-document.addEventListener('DOMContentLoaded', function() {
-  ['f-line','f-subline','f-block','f-gl1'].forEach(function(id) {
-    var el = $(id);
-    if (el) el.addEventListener('change', cascadeFilter);
-  });
-});
+function cascadeTeam(source) {
+  var selBlocks = ddGetSelected('f-block');
+  var l1All = FO.group_l1 || [];
+  var gaAll = FO.group_advisor || [];
+  // Only rebuild f-gl1 when triggered by f-block (parent changed)
+  if (source === 'f-block') {
+    if (selBlocks.length > 0) {
+      var bSet = new Set(selBlocks);
+      ddSetItems('f-gl1', l1All.filter(function(o){ return bSet.has(o.parent); }).map(function(o){return o.value;}));
+    } else {
+      ddSetItems('f-gl1', l1All.map(function(o){return o.value;}));
+    }
+  }
+  // Always rebuild f-gadv based on current selections
+  var selL1 = ddGetSelected('f-gl1');
+  if (selL1.length > 0) {
+    var l1Set = new Set(selL1);
+    ddSetItems('f-gadv', gaAll.filter(function(o){ return l1Set.has(o.parent); }).map(function(o){return o.value;}));
+  } else if (selBlocks.length > 0) {
+    var validL1 = new Set(l1All.filter(function(o){ return new Set(selBlocks).has(o.parent); }).map(function(o){return o.value;}));
+    ddSetItems('f-gadv', gaAll.filter(function(o){ return validL1.has(o.parent); }).map(function(o){return o.value;}));
+  } else {
+    ddSetItems('f-gadv', gaAll.map(function(o){return o.value;}));
+  }
+}
 
 /* ═══ 时间筛选 → 计算 execution_date ═══ */
 function computeExecDate() {
   if (fFW.length > 0) {
-    var last = fFW.sort().pop();
+    var sorted = fFW.slice().sort();
+    var last = sorted[sorted.length - 1];
     var parts = last.replace('FW','').split('-');
     var fy = parseInt(parts[0]), wk = parseInt(parts[1]);
     var fyStart = new Date(fy - 1, 5, 1);
@@ -333,7 +411,8 @@ function computeExecDate() {
     return fmtD(targetSun > fyEnd ? fyEnd : targetSun);
   }
   if (fYM.length > 0) {
-    var latest = fYM.sort().pop();
+    var sortedYM = fYM.slice().sort();
+    var latest = sortedYM[sortedYM.length - 1];
     var y = parseInt(latest.slice(0,4)), m = parseInt(latest.slice(4));
     var now = origExecDate ? new Date(origExecDate) : new Date();
     if (y === now.getFullYear() && m === (now.getMonth()+1)) return origExecDate;
@@ -341,7 +420,8 @@ function computeExecDate() {
     return y + '-' + (m < 10 ? '0' : '') + m + '-' + (lastDay < 10 ? '0' : '') + lastDay;
   }
   if (fFY.length > 0) {
-    var latest2 = fFY.sort().pop();
+    var sortedFY = fFY.slice().sort();
+    var latest2 = sortedFY[sortedFY.length - 1];
     var fy2 = parseInt(latest2.replace('FY',''));
     var nowED = origExecDate || new Date().toISOString().slice(0,10);
     var nowFY = parseInt(nowED.slice(5,7)) >= 6 ? parseInt(nowED.slice(0,4))+1 : parseInt(nowED.slice(0,4));
@@ -354,10 +434,14 @@ function fmtD(d) { return d.getFullYear() + '-' + (d.getMonth()+1 < 10 ? '0' : '
 
 /* ═══ APPLY / CLEAR ═══ */
 async function applyFilters() {
-  fLine = selVals('f-line'); fSubLine = selVals('f-subline'); fGSys = selVals('f-gsys');
-  fBlock = selVals('f-block'); fGL1 = selVals('f-gl1'); fGAdv = selVals('f-gadv');
-  fA = selVals('f-adv');
-  fFY = selVals('f-fy'); fYM = selVals('f-ym'); fFW = selVals('f-fw');
+  fLine = ddGetSelected('f-line'); fSubLine = ddGetSelected('f-subline'); fGSys = ddGetSelected('f-gsys');
+  fBlock = ddGetSelected('f-block'); fGL1 = ddGetSelected('f-gl1'); fGAdv = ddGetSelected('f-gadv');
+  fBType = ddGetSelected('f-btype');
+  fA = ddGetSelected('f-adv');
+  fFY = ddGetSelected('f-fy'); fYM = ddGetSelected('f-ym'); fFW = ddGetSelected('f-fw');
+  // strip display suffixes for fy/fw values
+  fFY = fFY.map(function(v){ return v.replace('（当前）',''); });
+  fFW = fFW.map(function(v){ return v.replace('（本周）',''); });
   renderTags();
   $('ftags').innerHTML = '<span class="fp-loading">⏳ 正在加载数据...</span>';
 
@@ -370,16 +454,16 @@ async function applyFilters() {
     filter_biz_block: fBlock,
     filter_group_l1: fGL1,
     filter_group_advisor: fGAdv,
+    filter_biz_type: fBType,
   });
   renderTags();
 }
 
 async function clearFilters() {
-  ['f-line','f-subline','f-gsys','f-block','f-gl1','f-gadv','f-adv','f-fy','f-ym','f-fw'].forEach(function(id) {
-    Array.from($(id).options).forEach(function(o) { o.selected = false; });
+  ['f-line','f-subline','f-gsys','f-block','f-gl1','f-gadv','f-btype','f-adv','f-fy','f-ym','f-fw'].forEach(function(id) {
+    ddClearAll(id);
   });
-  fLine=[]; fSubLine=[]; fGSys=[]; fBlock=[]; fGL1=[]; fGAdv=[]; fA=[]; fFY=[]; fYM=[]; fFW=[];
-  // 恢复全量下拉选项
+  fLine=[]; fSubLine=[]; fGSys=[]; fBlock=[]; fGL1=[]; fGAdv=[]; fBType=[]; fA=[]; fFY=[]; fYM=[]; fFW=[];
   buildOptions();
   renderTags();
   $('ftags').innerHTML = '<span class="fp-loading">⏳ 正在加载数据...</span>';
@@ -388,21 +472,48 @@ async function clearFilters() {
 }
 
 function rmFilter(type, val) {
-  var map = {ln:fLine, sl:fSubLine, gs:fGSys, bk:fBlock, l1:fGL1, ga:fGAdv, a:fA, fy:fFY, ym:fYM, fw:fFW};
-  map[type] = map[type].filter(function(v) { return v !== val; });
-  if(type==='ln')fLine=map.ln; if(type==='sl')fSubLine=map.sl; if(type==='gs')fGSys=map.gs;
-  if(type==='bk')fBlock=map.bk; if(type==='l1')fGL1=map.l1; if(type==='ga')fGAdv=map.ga;
-  if(type==='a')fA=map.a; if(type==='fy')fFY=map.fy; if(type==='ym')fYM=map.ym; if(type==='fw')fFW=map.fw;
-  var idMap = {ln:'f-line', sl:'f-subline', gs:'f-gsys', bk:'f-block', l1:'f-gl1', ga:'f-gadv', a:'f-adv', fy:'f-fy', ym:'f-ym', fw:'f-fw'};
-  Array.from($(idMap[type]).options).forEach(function(o) { o.selected = map[type].indexOf(o.value) !== -1; });
+  // Map filter type → dropdown id
+  var ddMap = {ln:'f-line', sl:'f-subline', gs:'f-gsys', bk:'f-block', l1:'f-gl1', ga:'f-gadv', bt:'f-btype', a:'f-adv', fy:'f-fy', ym:'f-ym', fw:'f-fw'};
+  var ddId = ddMap[type];
+  if (ddId) {
+    // For FY/FW, dropdown values have suffixes — match by prefix
+    if (type === 'fy' || type === 'fw') {
+      ddUncheckByPrefix(ddId, val);
+    } else if (type === 'ym') {
+      ddUncheckVal(ddId, val);
+    } else {
+      ddUncheckVal(ddId, val);
+    }
+  }
   applyFilters();
+}
+
+/* Uncheck a specific value in a dropdown */
+function ddUncheckVal(ddId, val) {
+  var items = $(ddId).querySelectorAll('.dd-item input');
+  items.forEach(function(cb) {
+    if (cb.value === val) { cb.checked = false; cb.parentElement.classList.remove('checked'); }
+  });
+  ddUpdateBtn(ddId);
+}
+
+/* Uncheck by prefix match (for FY/FW where dropdown has suffix like （当前）) */
+function ddUncheckByPrefix(ddId, prefix) {
+  var items = $(ddId).querySelectorAll('.dd-item input');
+  items.forEach(function(cb) {
+    // e.g. val='FY2026（当前）', prefix='FY2026' → startsWith match
+    if (cb.value === prefix || cb.value.indexOf(prefix) === 0) { cb.checked = false; cb.parentElement.classList.remove('checked'); }
+  });
+  ddUpdateBtn(ddId);
 }
 
 function renderTags() {
   var tags = [];
-  function mk(type, lbl, val) {
-    return '<span class="fp-tag">' + lbl + ': <b>' + val + '</b>'
-      + '<span class="x" onclick="rmFilter(&apos;' + type + '&apos;,&apos;' + val.replace(/'/g,'&apos;') + '&apos;)">×</span></span>';
+  function mk(type, lbl, val, displayVal) {
+    var ev = escHtml(displayVal || val);
+    var ea = escAttr(val);
+    return '<span class="fp-tag">' + lbl + ': <b>' + ev + '</b>'
+      + '<span class="x" data-ft="' + escAttr(type) + '" data-fv="' + ea + '">×</span></span>';
   }
   fLine.forEach(function(v) { tags.push(mk('ln', '条线', v)); });
   fSubLine.forEach(function(v) { tags.push(mk('sl', '二级条线', v)); });
@@ -410,12 +521,21 @@ function renderTags() {
   fBlock.forEach(function(v) { tags.push(mk('bk', '板块', v)); });
   fGL1.forEach(function(v) { tags.push(mk('l1', '一级分组', v)); });
   fGAdv.forEach(function(v) { tags.push(mk('ga', '分组(顾问)', v)); });
+  fBType.forEach(function(v) { tags.push(mk('bt', '业务类型', v)); });
   fA.forEach(function(v) { tags.push(mk('a', '顾问', v)); });
   fFY.forEach(function(v) { tags.push(mk('fy', '财年', v)); });
-  fYM.forEach(function(v) { tags.push(mk('ym', '年月', v.slice(0,4)+'年'+v.slice(4)+'月')); });
+  fYM.forEach(function(v) { tags.push(mk('ym', '年月', v, v.slice(0,4)+'年'+v.slice(4)+'月')); });
   fFW.forEach(function(v) { tags.push(mk('fw', '财周', v)); });
   $('ftags').innerHTML = tags.length ? tags.join('') : '<span class="fp-none">暂无筛选条件 · 显示当前权限下全量数据</span>';
 }
+
+/* Event delegation for filter tag removal (avoids inline onclick escaping issues) */
+document.addEventListener('click', function(e) {
+  var x = e.target.closest('.fp-tag .x');
+  if (x && x.dataset.ft && x.dataset.fv !== undefined) {
+    rmFilter(x.dataset.ft, x.dataset.fv);
+  }
+});
 
 /* ═══ UTILS ═══ */
 function N(v, d) { d = d || 2; return v == null ? '—' : (+v).toFixed(d); }
@@ -427,6 +547,7 @@ function hash(s) { var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))
 
 function pgHTML(val, target, timeP) {
   if (!target) return '';
+  val = val || 0;
   var pct = Math.min(val / target * 100, 100);
   var bc = val / target >= 1 ? 'hit' : 'miss';
   var pc = val / target >= 1 ? 'var(--grn)' : 'var(--org)';
@@ -527,19 +648,18 @@ function renderPotential() {
   depts.forEach(function(d) {
     var isOpen = expanded.has(d.name), hd = hash(d.name);
     var hasCt = d.contracts && d.contracts.length > 0;
-    var oc = hasCt ? 'tglDept(&apos;' + d.name.replace(/'/g,'&apos;') + '&apos;)' : '';
     var icon = hasCt ? '<span class="ex-icon' + (isOpen?' open':'') + '" id="ei'+hd+'">▶</span>' : '<span style="width:14px;display:inline-block"></span>';
     var badge = hasCt ? '<span class="dt has">' + d.contracts.length + '项</span>' : '';
     var toggle = hasCt ? ' <span style="font-size:10px;color:var(--t3)">' + (isOpen ? '▲' : '▼') + '</span>' : '';
-    rows += '<tr class="dr" onclick="' + oc + '"><td>' + icon + d.name + badge + toggle + '</td>'
+    rows += '<tr class="dr" data-dept="' + escAttr(d.name) + '"><td>' + icon + escHtml(d.name) + badge + toggle + '</td>'
       + '<td></td>'
       + '<td class="am ' + (d.unarchived>0?'wo':'z') + '">' + (d.unarchived>0?N(d.unarchived):'—') + '</td>'
       + '<td class="am ' + (d.unconfirmed>0?'wg':'z') + '">' + (d.unconfirmed>0?N(d.unconfirmed):'—') + '</td></tr>';
     if (hasCt) { d.contracts.forEach(function(c) {
       rows += '<tr class="cr' + (isOpen?'':' hidden') + '"><td>'
-        + '<span style="color:var(--t0);font-weight:500">' + (c.student||c.contract_no||'') + '</span>'
-        + '<span class="ct-no"> (' + (c.contract_no||'') + ')</span></td>'
-        + '<td class="ct-adv am" style="text-align:right">' + (c.advisor||'') + '</td>'
+        + '<span style="color:var(--t0);font-weight:500">' + escHtml(c.student||c.contract_no||'') + '</span>'
+        + '<span class="ct-no"> (' + escHtml(c.contract_no||'') + ')</span></td>'
+        + '<td class="ct-adv am" style="text-align:right">' + escHtml(c.advisor||'') + '</td>'
         + '<td class="am ' + ((c.unarchived||0)>0?'wo':'z') + '" style="font-size:12px">' + ((c.unarchived||0)>0?N(c.unarchived):'—') + '</td>'
         + '<td class="am ' + ((c.unconfirmed||0)>0?'wg':'z') + '" style="font-size:12px">' + ((c.unconfirmed||0)>0?N(c.unconfirmed):'—') + '</td></tr>';
     }); }
@@ -549,6 +669,16 @@ function renderPotential() {
 }
 
 function tglDept(name) { expanded.has(name) ? expanded.delete(name) : expanded.add(name); renderPotential(); }
+
+/* Event delegation for dept row expand/collapse */
+document.addEventListener('click', function(e) {
+  var dr = e.target.closest('tr.dr[data-dept]');
+  if (dr) {
+    var name = dr.getAttribute('data-dept');
+    // Only toggle if this dept has contracts (has expand icon)
+    if (dr.querySelector('.ex-icon')) tglDept(name);
+  }
+});
 
 function renderAdvisors() {
   if (!RAW) return;
@@ -561,7 +691,7 @@ function renderAdvisors() {
   $('ns-body').innerHTML = vis(ns, nsAll).map(function(r) {
     var rc = r.rank===1?'g1':r.rank===2?'g2':r.rank===3?'g3':'';
     return '<tr><td class="rn '+rc+'">'+r.rank+'</td>'
-      + '<td>'+r.name+((r.multilang||0)>0?'<span class="ml-tag">多语</span>':'')+'</td>'
+      + '<td>'+escHtml(r.name)+((r.multilang||0)>0?'<span class="ml-tag">多语</span>':'')+'</td>'
       + '<td class="mn '+((r.net_sign||0)<0?'nv':'')+'" style="text-align:right">'+N(r.net_sign)+'</td>'
       + '<td class="mn" style="text-align:right">'+N(r.gross_sign)+'</td>'
       + '<td class="mn '+((r.refund||0)>0?'nv':'')+'" style="text-align:right">'+((r.refund||0)>0?N(r.refund):'—')+'</td></tr>';
@@ -569,7 +699,7 @@ function renderAdvisors() {
 
   $('mm-body').innerHTML = vis(mm, mmAll).map(function(r) {
     var rc = r.rank===1?'g1':r.rank===2?'g2':r.rank===3?'g3':'';
-    return '<tr><td class="rn '+rc+'">'+r.rank+'</td><td>'+r.name+'</td>'
+    return '<tr><td class="rn '+rc+'">'+r.rank+'</td><td>'+escHtml(r.name)+'</td>'
       + '<td class="mn" style="text-align:right">'+N(r.total_payment)+'</td>'
       + '<td class="mn" style="text-align:right">'+N(r.gross_sign)+'</td>'
       + '<td class="mn '+((r.unarchived_unconfirmed||0)>0?'nv':'')+'" style="text-align:right">'

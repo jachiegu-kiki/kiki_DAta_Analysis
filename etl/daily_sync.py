@@ -187,9 +187,9 @@ def load_staff_map():
     return name_to_group, email_to_name
 
 def load_sign_group():
-    """签约分组：合同号 → 分组部门（系统口径）+ 分组部门（顾问口径）"""
+    """签约分组：合同号 → 分组部门（系统口径）+ 分组部门（顾问口径）+ 实际签约顾问"""
     if "sign_group" in _dim_cache: return _dim_cache["sign_group"]
-    m_sys, m_adv = {}, {}
+    m_sys, m_adv, m_actual = {}, {}, {}
     df = read_excel("sign_group")
     if df is not None:
         for _, r in df.dropna(subset=["合同号"]).iterrows():
@@ -198,8 +198,11 @@ def load_sign_group():
             adv_dept = cs(r.get("分组部门（顾问口径）"))
             if adv_dept:
                 m_adv[cn] = adv_dept
-    _dim_cache["sign_group"] = (m_sys, m_adv)
-    return m_sys, m_adv
+            actual = cs(r.get("实际签约顾问"))
+            if actual:
+                m_actual[cn] = actual
+    _dim_cache["sign_group"] = (m_sys, m_adv, m_actual)
+    return m_sys, m_adv, m_actual
 
 def load_history_group():
     """历史数据签约明细：合同号 → 团队分组（优先级2，往年）"""
@@ -234,13 +237,10 @@ def load_subline_map():
 def get_group(contract_no: str, advisor: str) -> str:
     """三级优先查找分组部门-系统口径（第六章）"""
     cn = cs(contract_no)
-    # 优先级1：签约分组（系统口径）
-    sg_sys, _ = load_sign_group()
+    sg_sys, _, _ = load_sign_group()
     if cn in sg_sys: return sg_sys[cn]
-    # 优先级2：历史数据团队分组
     hg = load_history_group()
     if cn in hg: return hg[cn]
-    # 优先级3：职员表（顾问姓名 → 部门）
     adv = cs(advisor)
     if adv:
         nm, _ = load_staff_map()
@@ -250,10 +250,16 @@ def get_group(contract_no: str, advisor: str) -> str:
 def get_group_advisor(contract_no: str, advisor: str) -> str:
     """查找分组部门-顾问口径：签约分组优先，回退到系统口径"""
     cn = cs(contract_no)
-    _, sg_adv = load_sign_group()
+    _, sg_adv, _ = load_sign_group()
     if cn in sg_adv: return sg_adv[cn]
-    # 顾问口径无数据时，回退到系统口径
     return get_group(contract_no, advisor)
+
+def get_actual_advisor(contract_no: str, fallback_advisor: str) -> str:
+    """查找实际签约顾问：签约分组优先，回退到系统顾问"""
+    cn = cs(contract_no)
+    _, _, m_actual = load_sign_group()
+    if cn in m_actual: return m_actual[cn]
+    return cs(fallback_advisor)
 
 def get_subline(contract_no: str) -> str:
     """查 Sign_Details 获取二级条线名称（第五章 §5.3）"""
@@ -269,6 +275,7 @@ def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
     return {
         "contract_no": cn, "sign_date": sign_date,
         "advisor_name": cs(advisor), "original_dept": cs(dept),
+        "actual_advisor": get_actual_advisor(cn, advisor),
         "line": cs(line), "sub_line": get_subline(cn),
         "secondary_group": get_group(cn, advisor),
         "secondary_group_advisor": get_group_advisor(cn, advisor),
@@ -446,6 +453,7 @@ def _refund_rec(refund_id, refund_date, contract_no="", advisor="",
         "refund_id": cs(refund_id), "refund_date": refund_date,
         "contract_no": cs(contract_no),
         "advisor_name": cs(advisor), "original_dept": cs(dept),
+        "actual_advisor": get_actual_advisor(contract_no, advisor),
         "line": cs(line), "sub_line": get_subline(contract_no),
         "secondary_group": get_group(contract_no, advisor),
         "secondary_group_advisor": get_group_advisor(contract_no, advisor),
@@ -747,9 +755,9 @@ def write_signing(records):
             for rec in recs:
                 conn.execute(text("""
                     INSERT INTO fact_signing
-                      (contract_no,sign_date,advisor_name,original_dept,line,sub_line,
+                      (contract_no,sign_date,advisor_name,original_dept,actual_advisor,line,sub_line,
                        secondary_group,secondary_group_advisor,sign_biz_type,school,gross_sign,source_system)
-                    VALUES (:contract_no,:sign_date,:advisor_name,:original_dept,:line,:sub_line,
+                    VALUES (:contract_no,:sign_date,:advisor_name,:original_dept,:actual_advisor,:line,:sub_line,
                             :secondary_group,:secondary_group_advisor,:sign_biz_type,:school,:gross_sign,:source_system)
                 """), rec)
             total_ins += len(recs)
@@ -772,9 +780,9 @@ def write_refund(records):
             for rec in recs:
                 conn.execute(text("""
                     INSERT INTO fact_refund
-                      (refund_id,refund_date,contract_no,advisor_name,original_dept,
+                      (refund_id,refund_date,contract_no,advisor_name,original_dept,actual_advisor,
                        line,sub_line,secondary_group,secondary_group_advisor,refund_biz_type,gross_refund,source_system)
-                    VALUES (:refund_id,:refund_date,:contract_no,:advisor_name,:original_dept,
+                    VALUES (:refund_id,:refund_date,:contract_no,:advisor_name,:original_dept,:actual_advisor,
                             :line,:sub_line,:secondary_group,:secondary_group_advisor,:refund_biz_type,:gross_refund,:source_system)
                 """), rec)
             total_ins += len(recs)

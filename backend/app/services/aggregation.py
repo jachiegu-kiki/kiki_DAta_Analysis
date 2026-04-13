@@ -1,10 +1,11 @@
 # backend/app/services/aggregation.py
 """
-聚合服务 v3.3:
-  Fix1: 部门筛选用 original_dept（实际部门）而非 secondary_group（分组）
-  Fix2: 潜在签约表返回 advisor_name 字段给前端
-  Fix3: 已收款未盖章只统计签约日期在当财年内的记录
-  Fix4: 收款KPI不返回目标
+聚合服务 v4.0:
+  - 双口径分组（系统口径 / 顾问口径）
+  - 级联筛选器（按条线 / 按团队）+ 业务类型筛选
+  - 顾问排行使用 actual_advisor
+  - 潜在签约使用 secondary_group（非 dept）
+  - 净签目标根据筛选条件联动
 """
 from datetime import date, timedelta
 from typing import Optional, List
@@ -60,6 +61,7 @@ async def build_daily_report(
     filter_biz_block: Optional[List[str]] = None,
     filter_group_l1: Optional[List[str]] = None,
     filter_group_advisor: Optional[List[str]] = None,
+    filter_biz_type: Optional[List[str]] = None,
 ) -> dict:
 
     fy_start    = get_fy_start(today)
@@ -99,14 +101,8 @@ async def build_daily_report(
         if role == "ADVISOR" and advisor_name: return f"{alias}.advisor_name = :advisor_name"
         return "1=1"
 
-    # ── 用户筛选：支持按条线 / 按团队 / 兼容旧版部门筛选 ──
-    # 按条线筛选（系统口径）：条线 → 二级条线 → 二级分组部门(secondary_group)
-    # 按团队筛选（顾问口径）：业务板块 → 一级分组部门 → 二级分组部门(secondary_group_advisor)
-
-    # -- 预计算：如果按业务板块/一级分组部门筛选，需展开为二级分组部门列表 --
-    resolved_group_sys_from_dim = []
+    # ── 预计算：展开业务板块/一级分组部门 → 二级分组部门列表 ──
     resolved_group_adv_from_dim = []
-
     if filter_biz_block or filter_group_l1:
         dim_clauses = []
         if filter_biz_block: dim_clauses.append("biz_block = ANY(:filter_biz_block)")
@@ -117,38 +113,63 @@ async def build_daily_report(
         """), {"filter_biz_block": filter_biz_block or [], "filter_group_l1": filter_group_l1 or []})).scalars().all()
         resolved_group_adv_from_dim = list(dim_rows)
 
+    adv_group_all = list(filter_group_advisor or []) + resolved_group_adv_from_dim
+
+    # ── 目标联动：解析筛选条件 → secondary_group 列表 ──
+    target_groups = []
+    if filter_group_sys:
+        target_groups.extend(filter_group_sys)
+    if adv_group_all:
+        target_groups.extend(adv_group_all)
+    if filter_line or filter_sub_line:
+        line_clauses = []
+        if filter_line: line_clauses.append("line = ANY(:filter_line)")
+        if filter_sub_line: line_clauses.append("sub_line = ANY(:filter_sub_line)")
+        line_where = " AND ".join(line_clauses)
+        line_groups = (await db.execute(text(f"""
+            SELECT DISTINCT secondary_group FROM fact_signing
+            WHERE sign_date BETWEEN :fy_start AND :today AND {line_where}
+        """), {"fy_start": fy_start, "today": today,
+               "filter_line": filter_line or [], "filter_sub_line": filter_sub_line or []})).scalars().all()
+        target_groups.extend(line_groups)
+    target_groups = list(set(target_groups)) if target_groups else []
+
+    # ── 用户筛选函数 ──
     def ufilter_sign(alias="fs"):
         clauses = []
-        # 兼容旧版
         if filter_depts:    clauses.append(f"{alias}.original_dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
-        # 按条线筛选（系统口径维度）
         if filter_line:      clauses.append(f"{alias}.line = ANY(:filter_line)")
         if filter_sub_line:  clauses.append(f"{alias}.sub_line = ANY(:filter_sub_line)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
-        # 按团队筛选（顾问口径维度）
-        adv_group_list = list(filter_group_advisor or []) + resolved_group_adv_from_dim
-        if adv_group_list:   clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
+        if adv_group_all:    clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
+        if filter_biz_type:  clauses.append(f"{alias}.sign_biz_type = ANY(:filter_biz_type)")
+        return " AND ".join(clauses) if clauses else "1=1"
+
+    def ufilter_refund(alias="rf"):
+        clauses = []
+        if filter_depts:    clauses.append(f"{alias}.original_dept = ANY(:filter_depts)")
+        if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        if filter_line:      clauses.append(f"{alias}.line = ANY(:filter_line)")
+        if filter_sub_line:  clauses.append(f"{alias}.sub_line = ANY(:filter_sub_line)")
+        if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
+        if adv_group_all:    clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
+        if filter_biz_type:  clauses.append(f"{alias}.refund_biz_type = ANY(:filter_biz_type)")
         return " AND ".join(clauses) if clauses else "1=1"
 
     def ufilter_receipt(alias="fr"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
-        # 收款表暂无 line/secondary_group 字段，按条线/团队筛选不直接过滤收款
         return " AND ".join(clauses) if clauses else "1=1"
 
     def ufilter_fund(alias="fs"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
-        # 资金快照用 secondary_group
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
-        adv_group_list = list(filter_group_advisor or []) + resolved_group_adv_from_dim
-        if adv_group_list:   clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
+        if adv_group_all:    clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
         return " AND ".join(clauses) if clauses else "1=1"
-
-    adv_group_all = list(filter_group_advisor or []) + resolved_group_adv_from_dim
 
     params = {
         "today": today, "yesterday": yesterday, "week_start": week_start,
@@ -166,6 +187,8 @@ async def build_daily_report(
         "filter_sub_line": filter_sub_line or [],
         "filter_group_sys": filter_group_sys or [],
         "filter_group_adv_all": adv_group_all or [],
+        "filter_biz_type": filter_biz_type or [],
+        "target_groups": target_groups or [],
     }
 
     r_rbac = rbac_receipt()
@@ -173,7 +196,7 @@ async def build_daily_report(
     rf_rbac = rbac_sign("rf")
     r_uf = ufilter_receipt()
     s_uf = ufilter_sign("fs")
-    rf_uf = ufilter_sign("rf")
+    rf_uf = ufilter_refund("rf")
     fund_uf = ufilter_fund("fs")
 
     # ── 收款 KPI ──
@@ -228,9 +251,11 @@ async def build_daily_report(
         SELECT s.*, r.* FROM sign_agg s, refund_agg r
     """), params)).mappings().one()
 
-    # ── 目标（仅用于净签，不用于收款）──
+    # ── 目标（根据筛选条件联动）──
     target_where = ""
-    if filter_depts:
+    if target_groups:
+        target_where = " AND secondary_group = ANY(:target_groups)"
+    elif filter_depts:
         target_where = " AND secondary_group = ANY(:filter_depts)"
     cur_ym = today.strftime("%Y-%m")
     monthly_target = float((await db.execute(text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month=:ym{target_where}"), params | {"ym": cur_ym})).scalar() or 0) or None
@@ -241,34 +266,29 @@ async def build_daily_report(
         d = d.replace(year=d.year+1, month=1) if d.month == 12 else d.replace(month=d.month+1)
     fy_target = float((await db.execute(text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month = ANY(:months){target_where}"), params | {"months": fy_months})).scalar() or 0) or None
 
-    # ── 资金快照：已收款未盖章 + 未认款 ──
-    # 财年过滤已在 ETL 层完成（create_dt < FY_START 的记录不入库），此处无需二次过滤
+    # ── 资金快照：用 secondary_group 替代 dept ──
     fund_detail_rows = (await db.execute(text(f"""
         WITH unarchived AS (
-            SELECT fs.dept, fs.contract_no, fs.advisor_name, fs.metric_type,
+            SELECT fs.secondary_group AS grp, fs.contract_no, fs.advisor_name, fs.metric_type,
                    fs.amount / 10000.0 AS amount_wan
             FROM fact_fund_snapshot fs
             WHERE fs.snapshot_date = (SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type='已收款未盖章')
-              AND fs.metric_type = '已收款未盖章'
-              AND {fund_uf}
+              AND fs.metric_type = '已收款未盖章' AND {fund_uf}
         ),
         unconfirmed AS (
-            SELECT fs.dept, fs.contract_no, fs.advisor_name, fs.metric_type,
+            SELECT fs.secondary_group AS grp, fs.contract_no, fs.advisor_name, fs.metric_type,
                    fs.amount / 10000.0 AS amount_wan
             FROM fact_fund_snapshot fs
             WHERE fs.snapshot_date = (SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type='未认款')
-              AND fs.metric_type = '未认款'
-              AND {fund_uf}
+              AND fs.metric_type = '未认款' AND {fund_uf}
         )
-        SELECT * FROM unarchived
-        UNION ALL
-        SELECT * FROM unconfirmed
-        ORDER BY dept, amount_wan DESC
+        SELECT * FROM unarchived UNION ALL SELECT * FROM unconfirmed
+        ORDER BY grp, amount_wan DESC
     """), params)).mappings().all()
 
     dept_map = {}
     for row in fund_detail_rows:
-        dn = row["dept"] or "未知部门"
+        dn = row["grp"] or "未知部门"
         if dn not in dept_map:
             dept_map[dn] = {"name": dn, "unarchived": 0.0, "unconfirmed": 0.0, "contracts": []}
         de = dept_map[dn]
@@ -297,22 +317,22 @@ async def build_daily_report(
     t_ua = safe_round(sum(d["unarchived"] or 0 for d in fund_depts), 2)
     t_uc = safe_round(sum(d["unconfirmed"] or 0 for d in fund_depts), 2)
 
-    # ── 顾问排行 ──
+    # ── 顾问排行：使用 actual_advisor ──
     advisor_sign_rows = (await db.execute(text(f"""
         WITH gs AS (
-            SELECT advisor_name, SUM(gross_sign) AS gross_sign,
+            SELECT actual_advisor AS adv, SUM(gross_sign) AS gross_sign,
                    SUM(CASE WHEN sign_biz_type='多语' THEN gross_sign ELSE 0 END) AS multilang
-            FROM fact_signing fs WHERE sign_date BETWEEN :month_start AND :today AND advisor_name!='' AND {s_rbac} AND {s_uf} GROUP BY advisor_name
+            FROM fact_signing fs WHERE sign_date BETWEEN :month_start AND :today AND actual_advisor!='' AND {s_rbac} AND {s_uf} GROUP BY actual_advisor
         ), rf AS (
-            SELECT advisor_name, SUM(gross_refund) AS refund
-            FROM fact_refund rf WHERE refund_date BETWEEN :month_start AND :today AND advisor_name!='' AND {rf_rbac} AND {rf_uf} GROUP BY advisor_name
+            SELECT actual_advisor AS adv, SUM(gross_refund) AS refund
+            FROM fact_refund rf WHERE refund_date BETWEEN :month_start AND :today AND actual_advisor!='' AND {rf_rbac} AND {rf_uf} GROUP BY actual_advisor
         )
-        SELECT COALESCE(gs.advisor_name, rf.advisor_name) AS name,
+        SELECT COALESCE(gs.adv, rf.adv) AS name,
                ROUND(COALESCE(gs.gross_sign,0)/10000.0,4) AS gross_sign,
                ROUND(COALESCE(rf.refund,0)/10000.0,4) AS refund,
                ROUND((COALESCE(gs.gross_sign,0)-COALESCE(rf.refund,0))/10000.0,4) AS net_sign,
                ROUND(COALESCE(gs.multilang,0)/10000.0,4) AS multilang
-        FROM gs FULL OUTER JOIN rf USING (advisor_name) ORDER BY net_sign DESC
+        FROM gs FULL OUTER JOIN rf ON gs.adv = rf.adv ORDER BY net_sign DESC
     """), params)).mappings().all()
 
     million_rows = (await db.execute(text(f"""
@@ -320,9 +340,9 @@ async def build_daily_report(
             SELECT advisor_name, SUM(amount)/10000.0 AS total_payment
             FROM fact_receipt fr WHERE receipt_date BETWEEN :month_start AND :today AND advisor_name!='' AND {r_rbac} AND {r_uf} GROUP BY advisor_name
         ), gs AS (
-            SELECT advisor_name, SUM(gross_sign)/10000.0 AS gross_sign,
+            SELECT actual_advisor AS adv, SUM(gross_sign)/10000.0 AS gross_sign,
                    SUM(CASE WHEN sign_biz_type='多语' THEN gross_sign ELSE 0 END)/10000.0 AS multilang
-            FROM fact_signing fs WHERE sign_date BETWEEN :month_start AND :today AND advisor_name!='' AND {s_rbac} AND {s_uf} GROUP BY advisor_name
+            FROM fact_signing fs WHERE sign_date BETWEEN :month_start AND :today AND actual_advisor!='' AND {s_rbac} AND {s_uf} GROUP BY actual_advisor
         ), fund AS (
             SELECT advisor_name, SUM(amount)/10000.0 AS unarchived_unconfirmed
             FROM fact_fund_snapshot WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type IN ('已收款未盖章','未认款')) AND advisor_name!='' GROUP BY advisor_name
@@ -330,12 +350,11 @@ async def build_daily_report(
         SELECT pay.advisor_name AS name, ROUND(pay.total_payment,4) AS total_payment,
                ROUND(COALESCE(gs.gross_sign,0),4) AS gross_sign, ROUND(COALESCE(gs.multilang,0),4) AS multilang,
                ROUND(COALESCE(fund.unarchived_unconfirmed,0),4) AS unarchived_unconfirmed
-        FROM pay LEFT JOIN gs USING(advisor_name) LEFT JOIN fund USING(advisor_name)
+        FROM pay LEFT JOIN gs ON pay.advisor_name = gs.adv LEFT JOIN fund USING(advisor_name)
         WHERE pay.total_payment > 0 ORDER BY total_payment DESC
     """), params)).mappings().all()
 
-    # ── [v4] 级联筛选器元数据 ──
-    # 按条线筛选：条线 → 二级条线 → 二级分组部门（系统口径）
+    # ── 级联筛选器元数据 ──
     all_lines_rows = (await db.execute(text(f"""
         SELECT DISTINCT line FROM fact_signing fs
         WHERE sign_date BETWEEN :fy_start AND :today AND line != '' AND {s_rbac}
@@ -358,8 +377,6 @@ async def build_daily_report(
     """), params)).mappings().all()
     all_group_sys = [{"value": r["secondary_group"], "parent": r["sub_line"]} for r in all_group_sys_rows]
 
-    # 按团队筛选：业务板块 → 一级分组部门 → 二级分组部门（顾问口径）
-    # 从 dim_group_dept 维度表获取完整层级
     dim_gd_rows = (await db.execute(text("""
         SELECT DISTINCT biz_block, primary_group, secondary_group
         FROM dim_group_dept WHERE biz_block != '' AND primary_group != ''
@@ -367,47 +384,26 @@ async def build_daily_report(
     """))).mappings().all()
 
     all_biz_blocks = sorted(set(r["biz_block"] for r in dim_gd_rows))
-    all_group_l1 = [{"value": r["primary_group"], "parent": r["biz_block"]} for r in dim_gd_rows]
-    # 去重 primary_group
     seen_l1 = set()
     dedup_l1 = []
-    for item in all_group_l1:
-        key = (item["value"], item["parent"])
+    for r in dim_gd_rows:
+        key = (r["primary_group"], r["biz_block"])
         if key not in seen_l1:
             seen_l1.add(key)
-            dedup_l1.append(item)
+            dedup_l1.append({"value": r["primary_group"], "parent": r["biz_block"]})
     all_group_l1 = dedup_l1
-
     all_group_advisor = [{"value": r["secondary_group"], "parent": r["primary_group"]} for r in dim_gd_rows]
 
-    # 顾问列表（保留）
     all_advisors_rows = (await db.execute(text(f"""
-        SELECT DISTINCT advisor_name FROM fact_signing fs
-        WHERE sign_date BETWEEN :fy_start AND :today AND advisor_name != '' AND {s_rbac}
-        ORDER BY advisor_name
+        SELECT DISTINCT actual_advisor FROM fact_signing fs
+        WHERE sign_date BETWEEN :fy_start AND :today AND actual_advisor != '' AND {s_rbac}
+        ORDER BY actual_advisor
     """), params)).mappings().all()
-    all_advisors = [r["advisor_name"] for r in all_advisors_rows]
-
-    # 兼容旧版 advisor_dept_links (保留给可能的旧前端)
-    adl_rows = (await db.execute(text(f"""
-        SELECT DISTINCT advisor_name, original_dept AS dept
-        FROM fact_signing fs
-        WHERE sign_date BETWEEN :fy_start AND :today
-          AND advisor_name != '' AND original_dept != ''
-          AND {s_rbac}
-        ORDER BY advisor_name, dept
-    """), params)).mappings().all()
-    advisor_dept_links = {}
-    for row in adl_rows:
-        advisor_dept_links.setdefault(row["advisor_name"], [])
-        if row["dept"] not in advisor_dept_links[row["advisor_name"]]:
-            advisor_dept_links[row["advisor_name"]].append(row["dept"])
-    all_depts = sorted(set(r["dept"] for r in adl_rows))
+    all_advisors = [r["actual_advisor"] for r in all_advisors_rows]
 
     # ── 财周 ──
     current_fw = get_fiscal_week_number(today)
 
-    # ── 时间进度 ──
     import calendar
     month_days = calendar.monthrange(today.year, today.month)[1]
     monthly_progress = round((today.day - 1) / month_days * 100, 2)
@@ -443,7 +439,6 @@ async def build_daily_report(
             "execution_date": today.isoformat(), "fiscal_week_start": week_start.isoformat(),
             "fiscal_week_number": current_fw,
         },
-        # [Fix4] 收款KPI不设目标
         "kpi_payment": {
             "daily":       {"value": safe_round(dc,2), "wow_pct": safe_pct(dc,dw_), "yoy_pct": safe_pct(dc,dy)},
             "weekly":      {"value": safe_round(wc,2), "wow_pct": safe_pct(wc,ww),  "yoy_pct": safe_pct(wc,wy)},
@@ -467,19 +462,16 @@ async def build_daily_report(
             {"rank":i+1,"name":r["name"],"total_payment":safe_round(float(r["total_payment"] or 0),2),
              "gross_sign":safe_round(float(r["gross_sign"] or 0),2),"multilang":safe_round(float(r["multilang"] or 0),2),
              "unarchived_unconfirmed":safe_round(float(r["unarchived_unconfirmed"] or 0),2)} for i,r in enumerate(million_rows)],
-        # 兼容旧版
-        "advisor_dept_links": advisor_dept_links,
-        "all_depts": all_depts,
+        "advisor_dept_links": {},
+        "all_depts": [],
         "all_advisors": all_advisors,
-        # v4: 级联筛选器元数据
         "filter_options": {
-            # 按条线筛选（系统口径）: line → sub_line → secondary_group
             "lines": all_lines,
             "sub_lines": all_sub_lines,
             "group_sys": all_group_sys,
-            # 按团队筛选（顾问口径）: biz_block → primary_group → secondary_group_advisor
             "biz_blocks": all_biz_blocks,
             "group_l1": all_group_l1,
             "group_advisor": all_group_advisor,
+            "biz_types": ["留学", "多语"],
         },
     }

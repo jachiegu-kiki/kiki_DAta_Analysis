@@ -23,6 +23,7 @@ async def daily_report(
     filter_biz_block: Optional[str] = Query(None, description="按业务板块筛选，逗号分隔"),
     filter_group_l1: Optional[str] = Query(None, description="按一级分组部门筛选，逗号分隔"),
     filter_group_advisor: Optional[str] = Query(None, description="按二级分组部门（顾问口径）筛选，逗号分隔"),
+    filter_biz_type: Optional[str] = Query(None, description="按业务类型筛选：留学/多语，逗号分隔"),
     db: AsyncSession = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
@@ -45,5 +46,6 @@ async def daily_report(
         filter_biz_block=_split(filter_biz_block),
         filter_group_l1=_split(filter_group_l1),
         filter_group_advisor=_split(filter_group_advisor),
+        filter_biz_type=_split(filter_biz_type),
     )
     return report

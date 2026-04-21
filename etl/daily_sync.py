@@ -272,13 +272,15 @@ def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
               biz_type="留学", school="ERP", gross_sign=0, source="日更"):
     """统一构建签约记录"""
     cn = cs(contract_no)
+    sg = "语培" if biz_type == "多语" else get_group(cn, advisor)
+    sga = "语培" if biz_type == "多语" else get_group_advisor(cn, advisor)
     return {
         "contract_no": cn, "sign_date": sign_date,
         "advisor_name": cs(advisor), "original_dept": cs(dept),
         "actual_advisor": get_actual_advisor(cn, advisor),
         "line": cs(line), "sub_line": get_subline(cn),
-        "secondary_group": get_group(cn, advisor),
-        "secondary_group_advisor": get_group_advisor(cn, advisor),
+        "secondary_group": sg,
+        "secondary_group_advisor": sga,
         "sign_biz_type": biz_type, "school": school,
         "gross_sign": cf(gross_sign), "source_system": source,
     }
@@ -449,14 +451,16 @@ def mod_D():
 # ═══════════════════════════════════════════════════════════════
 def _refund_rec(refund_id, refund_date, contract_no="", advisor="",
                 dept="", line="", biz_type="留学", gross_refund=0, source="日更"):
+    sg = "语培" if biz_type == "多语" else get_group(contract_no, advisor)
+    sga = "语培" if biz_type == "多语" else get_group_advisor(contract_no, advisor)
     return {
         "refund_id": cs(refund_id), "refund_date": refund_date,
         "contract_no": cs(contract_no),
         "advisor_name": cs(advisor), "original_dept": cs(dept),
         "actual_advisor": get_actual_advisor(contract_no, advisor),
         "line": cs(line), "sub_line": get_subline(contract_no),
-        "secondary_group": get_group(contract_no, advisor),
-        "secondary_group_advisor": get_group_advisor(contract_no, advisor),
+        "secondary_group": sg,
+        "secondary_group_advisor": sga,
         "refund_biz_type": biz_type,
         "gross_refund": cf(gross_refund), "source_system": source,
     }

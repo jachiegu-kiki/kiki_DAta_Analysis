@@ -83,7 +83,7 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
 }
 @media(min-width:769px){.mob-meta{display:none !important}}
 /* ═══ Custom Dropdown Checkboxes ═══ */
-.dd{position:relative;min-width:110px}.dd-btn{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:6px 10px;font-size:12.5px;color:var(--t0);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;transition:border-color .2s;white-space:nowrap;user-select:none;min-height:33px}.dd-btn:hover{border-color:var(--grn)}.dd.open .dd-btn{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}.dd-btn.has-sel{background:var(--grn-l);border-color:rgba(0,112,60,.35);color:var(--grn2);font-weight:600}.dd-arrow{font-size:9px;color:var(--t3);transition:transform .2s}.dd.open .dd-arrow{transform:rotate(180deg)}.dd-list{display:none;position:absolute;top:100%;left:0;min-width:100%;max-height:220px;overflow-y:auto;background:var(--white);border:1.5px solid var(--grn);border-radius:0 0 var(--r) var(--r);box-shadow:0 8px 24px rgba(0,40,0,.15);z-index:50;margin-top:-1px}.dd.open .dd-list{display:block}.dd-item{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;cursor:pointer;transition:background .1s;white-space:nowrap}.dd-item:hover{background:var(--grn-l)}.dd-item input[type=checkbox]{accent-color:var(--grn);width:14px;height:14px;cursor:pointer;flex-shrink:0}.dd-item.checked{background:var(--grn-m);font-weight:600;color:var(--grn2)}
+.dd{position:relative;min-width:110px}.dd-btn{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:6px 10px;font-size:12.5px;color:var(--t0);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;transition:border-color .2s;white-space:nowrap;user-select:none;min-height:33px}.dd-btn:hover{border-color:var(--grn)}.dd.open .dd-btn{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}.dd-btn.has-sel{background:var(--grn-l);border-color:rgba(0,112,60,.35);color:var(--grn2);font-weight:600}.dd-arrow{font-size:9px;color:var(--t3);transition:transform .2s}.dd.open .dd-arrow{transform:rotate(180deg)}.dd-list{display:none;position:absolute;top:100%;left:0;min-width:100%;max-height:260px;overflow-y:auto;background:var(--white);border:1.5px solid var(--grn);border-radius:0 0 var(--r) var(--r);box-shadow:0 8px 24px rgba(0,40,0,.15);z-index:50;margin-top:-1px}.dd.open .dd-list{display:block}.dd-item{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;cursor:pointer;transition:background .1s;white-space:nowrap}.dd-item:hover{background:var(--grn-l)}.dd-item input[type=checkbox]{accent-color:var(--grn);width:14px;height:14px;cursor:pointer;flex-shrink:0}.dd-item.checked{background:var(--grn-m);font-weight:600;color:var(--grn2)}.dd-search-wrap{position:sticky;top:0;background:var(--white);padding:6px 6px 5px;border-bottom:1px solid var(--s2);z-index:1}.dd-search{width:100%;padding:5px 8px;font-size:12px;border:1px solid var(--bd);border-radius:4px;outline:none;font-family:var(--sans);color:var(--t0);background:var(--white)}.dd-search:focus{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}.dd-empty{padding:10px;font-size:11.5px;color:var(--t3);text-align:center;font-style:italic}
 </style>
 </head>
 <body>
@@ -167,6 +167,7 @@ async function fetchReport(execDate, filterParams) {
   if (fp.filter_biz_block && fp.filter_biz_block.length) qs.push('filter_biz_block=' + encodeURIComponent(fp.filter_biz_block.join(',')));
   if (fp.filter_group_l1 && fp.filter_group_l1.length) qs.push('filter_group_l1=' + encodeURIComponent(fp.filter_group_l1.join(',')));
   if (fp.filter_group_advisor && fp.filter_group_advisor.length) qs.push('filter_group_advisor=' + encodeURIComponent(fp.filter_group_advisor.join(',')));
+  if (fp.filter_biz_type && fp.filter_biz_type.length) qs.push('filter_biz_type=' + encodeURIComponent(fp.filter_biz_type.join(',')));
   if (qs.length) url += '?' + qs.join('&');
 
   try {
@@ -220,12 +221,38 @@ document.addEventListener('click', function(e) {
   }
 });
 
-function ddSetItems(id, items) {
+function ddSetItems(id, items, opts) {
+  opts = opts || {};
   var list = $(id).querySelector('.dd-list');
-  list.innerHTML = items.map(function(v) {
+  var searchHtml = opts.searchable
+    ? '<div class="dd-search-wrap"><input class="dd-search" type="text" placeholder="输入搜索..." oninput="ddFilter(\'' + id + '\',this.value)"></div>'
+    : '';
+  var itemsHtml = items.map(function(v) {
     return '<label class="dd-item" data-val="' + v + '"><input type="checkbox" value="' + v + '" onchange="ddOnChange(\'' + id + '\')"><span>' + v + '</span></label>';
   }).join('');
+  list.innerHTML = searchHtml + itemsHtml;
   ddUpdateBtn(id);
+}
+
+function ddFilter(id, q) {
+  q = (q || '').trim().toLowerCase();
+  var any = false;
+  $(id).querySelectorAll('.dd-item').forEach(function(item) {
+    var v = (item.getAttribute('data-val') || '').toLowerCase();
+    var show = !q || v.indexOf(q) >= 0;
+    item.style.display = show ? '' : 'none';
+    if (show) any = true;
+  });
+  var list = $(id).querySelector('.dd-list');
+  var empty = list.querySelector('.dd-empty');
+  if (!any && !empty) {
+    var e = document.createElement('div');
+    e.className = 'dd-empty';
+    e.textContent = '无匹配结果';
+    list.appendChild(e);
+  } else if (any && empty) {
+    empty.remove();
+  }
 }
 
 function ddGetSelected(id) {
@@ -287,8 +314,8 @@ function buildOptions() {
   // 业务类型
   ddSetItems('f-btype', FO.biz_types || ['留学', '多语']);
 
-  // 顾问
-  ddSetItems('f-adv', ALL_ADVS);
+  // 顾问（支持打字搜索）
+  ddSetItems('f-adv', ALL_ADVS, {searchable: true});
 
   // 财年
   var fyYear = curM >= 6 ? curY + 1 : curY;

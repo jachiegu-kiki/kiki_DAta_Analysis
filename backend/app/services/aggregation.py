@@ -138,7 +138,7 @@ async def build_daily_report(
     def ufilter_sign(alias="fs"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.original_dept = ANY(:filter_depts)")
-        if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         if filter_line:      clauses.append(f"{alias}.line = ANY(:filter_line)")
         if filter_sub_line:  clauses.append(f"{alias}.sub_line = ANY(:filter_sub_line)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
@@ -149,7 +149,7 @@ async def build_daily_report(
     def ufilter_refund(alias="rf"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.original_dept = ANY(:filter_depts)")
-        if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         if filter_line:      clauses.append(f"{alias}.line = ANY(:filter_line)")
         if filter_sub_line:  clauses.append(f"{alias}.sub_line = ANY(:filter_sub_line)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")

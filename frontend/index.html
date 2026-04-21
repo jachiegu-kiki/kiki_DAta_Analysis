@@ -84,6 +84,14 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
 @media(min-width:769px){.mob-meta{display:none !important}}
 /* ═══ Custom Dropdown Checkboxes ═══ */
 .dd{position:relative;min-width:110px}.dd-btn{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:6px 10px;font-size:12.5px;color:var(--t0);cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:6px;transition:border-color .2s;white-space:nowrap;user-select:none;min-height:33px}.dd-btn:hover{border-color:var(--grn)}.dd.open .dd-btn{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}.dd-btn.has-sel{background:var(--grn-l);border-color:rgba(0,112,60,.35);color:var(--grn2);font-weight:600}.dd-arrow{font-size:9px;color:var(--t3);transition:transform .2s}.dd.open .dd-arrow{transform:rotate(180deg)}.dd-list{display:none;position:absolute;top:100%;left:0;min-width:100%;max-height:260px;overflow-y:auto;background:var(--white);border:1.5px solid var(--grn);border-radius:0 0 var(--r) var(--r);box-shadow:0 8px 24px rgba(0,40,0,.15);z-index:50;margin-top:-1px}.dd.open .dd-list{display:block}.dd-item{display:flex;align-items:center;gap:8px;padding:6px 10px;font-size:12px;cursor:pointer;transition:background .1s;white-space:nowrap}.dd-item:hover{background:var(--grn-l)}.dd-item input[type=checkbox]{accent-color:var(--grn);width:14px;height:14px;cursor:pointer;flex-shrink:0}.dd-item.checked{background:var(--grn-m);font-weight:600;color:var(--grn2)}.dd-search-wrap{position:sticky;top:0;background:var(--white);padding:6px 6px 5px;border-bottom:1px solid var(--s2);z-index:1}.dd-search{width:100%;padding:5px 8px;font-size:12px;border:1px solid var(--bd);border-radius:4px;outline:none;font-family:var(--sans);color:var(--t0);background:var(--white)}.dd-search:focus{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}.dd-empty{padding:10px;font-size:11.5px;color:var(--t3);text-align:center;font-style:italic}
+/* ═══ ROLE GATING (ADVISOR only):
+     鎖定「顧問」篩選器 — 防止手工改下拉值送出。
+     section 不隱藏 — 後端 RBAC 已將資料自動限縮為自己的，
+     前端 render 階段用 empty-state 處理沒數據情況。
+     （後端 RBAC 是真正的 source of truth，前端只做視覺鎖定）
+*/
+body.role-advisor #f-adv .dd-btn{pointer-events:none;opacity:.65;background:var(--grn-l);border-color:rgba(0,112,60,.35);color:var(--grn2);font-weight:600}
+body.role-advisor #f-adv .dd-list{display:none !important}
 </style>
 </head>
 <body>
@@ -199,6 +207,10 @@ async function fetchReport(execDate, filterParams) {
 (async function init() {
   CU = await loadMe();
   if (!CU) return;  // 401 已被 loadMe 跳轉處理
+  // 角色網關：ADVISOR → body 加 class，CSS 自動隱藏潛在簽約 / 顧問排行 / 鎖顧問篩選器
+  if (CU.role === 'ADVISOR') {
+    document.body.classList.add('role-advisor');
+  }
   await fetchReport();
 })();
 
@@ -314,8 +326,20 @@ function buildOptions() {
   // 业务类型
   ddSetItems('f-btype', FO.biz_types || ['留学', '多语']);
 
-  // 顾问（支持打字搜索）
-  ddSetItems('f-adv', ALL_ADVS, {searchable: true});
+  // 顾问（支持打字搜索；ADVISOR 角色後端已只回自己一人，前端做 visual lock）
+  if (CU && CU.role === 'ADVISOR') {
+    ddSetItems('f-adv', ALL_ADVS);
+    // 預勾選自己，按鈕顯示名字而非「全部」
+    var advList = $('f-adv').querySelector('.dd-list');
+    if (advList) {
+      advList.querySelectorAll('input[type=checkbox]').forEach(function(cb) {
+        if (cb.value === CU.advisor_name) cb.checked = true;
+      });
+      ddUpdateBtn('f-adv');
+    }
+  } else {
+    ddSetItems('f-adv', ALL_ADVS, {searchable: true});
+  }
 
   // 财年
   var fyYear = curM >= 6 ? curY + 1 : curY;
@@ -628,7 +652,7 @@ function renderPotential() {
         + '<td class="am ' + ((c.unconfirmed||0)>0?'wg':'z') + '" style="font-size:12px">' + ((c.unconfirmed||0)>0?N(c.unconfirmed):'—') + '</td></tr>';
     }); }
   });
-  $('pt-body').innerHTML = rows;
+  $('pt-body').innerHTML = rows || '<tr><td colspan="4" style="text-align:center;color:var(--t3);padding:20px">无匹配数据</td></tr>';
   $('pt-foot').innerHTML = '<tr><td>合 计</td><td></td><td class="am">' + N(totalUA) + '</td><td class="am">' + N(totalUC) + '</td></tr>';
 }
 

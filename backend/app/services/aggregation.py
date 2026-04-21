@@ -90,15 +90,25 @@ async def build_daily_report(
         prev_month_today = today.replace(year=prev_month_start.year, month=prev_month_start.month, day=last_day)
 
     # ── RBAC ──
+    # 統一口徑:
+    #   ADMIN        → 無條件
+    #   MANAGER      → 按部門切面（sign/refund 走 secondary_group，receipt 走 dept LIKE，fund 走 secondary_group）
+    #   ADVISOR      → 按 actual_advisor（四張表對稱，和前端下拉/顧問排行一致）
+    # 對稱性原則: 每張 fact 表都有對應 rbac_* 函數，任何新查詢都知道要帶 RBAC。
     def rbac_sign(alias="fs"):
         if role == "ADMIN": return "1=1"
         if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group = :dept_scope"
-        if role == "ADVISOR" and advisor_name: return f"{alias}.advisor_name = :advisor_name"
+        if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
     def rbac_receipt(alias="fr"):
         if role == "ADMIN": return "1=1"
         if role == "MANAGER" and dept_scope: return f"{alias}.dept LIKE :dept_like"
-        if role == "ADVISOR" and advisor_name: return f"{alias}.advisor_name = :advisor_name"
+        if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
+        return "1=1"
+    def rbac_fund(alias="fs"):
+        if role == "ADMIN": return "1=1"
+        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group = :dept_scope"
+        if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
 
     # ── 预计算：展开业务板块/一级分组部门 → 二级分组部门列表 ──
@@ -160,13 +170,13 @@ async def build_daily_report(
     def ufilter_receipt(alias="fr"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
-        if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         return " AND ".join(clauses) if clauses else "1=1"
 
     def ufilter_fund(alias="fs"):
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
-        if filter_advisors: clauses.append(f"{alias}.advisor_name = ANY(:filter_advisors)")
+        if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
         if adv_group_all:    clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
         return " AND ".join(clauses) if clauses else "1=1"
@@ -194,6 +204,7 @@ async def build_daily_report(
     r_rbac = rbac_receipt()
     s_rbac = rbac_sign("fs")
     rf_rbac = rbac_sign("rf")
+    fund_rbac = rbac_fund("fs")
     r_uf = ufilter_receipt()
     s_uf = ufilter_sign("fs")
     rf_uf = ufilter_refund("rf")
@@ -266,6 +277,12 @@ async def build_daily_report(
         d = d.replace(year=d.year+1, month=1) if d.month == 12 else d.replace(month=d.month+1)
     fy_target = float((await db.execute(text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month = ANY(:months){target_where}"), params | {"months": fy_months})).scalar() or 0) or None
 
+    # ══════════════════════════════════════════════════════════
+    #  潛簽 / 顧問排行 / 百萬榜
+    #  RBAC 由 fund_rbac / s_rbac / rf_rbac / r_rbac 逐查詢下推，
+    #  不再依角色短路 — section 永遠出現，空數據時前端走 empty-state。
+    # ══════════════════════════════════════════════════════════
+
     # ── 资金快照：用 secondary_group 替代 dept ──
     fund_detail_rows = (await db.execute(text(f"""
         WITH unarchived AS (
@@ -273,14 +290,14 @@ async def build_daily_report(
                    fs.amount / 10000.0 AS amount_wan
             FROM fact_fund_snapshot fs
             WHERE fs.snapshot_date = (SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type='已收款未盖章')
-              AND fs.metric_type = '已收款未盖章' AND {fund_uf}
+              AND fs.metric_type = '已收款未盖章' AND {fund_rbac} AND {fund_uf}
         ),
         unconfirmed AS (
             SELECT fs.secondary_group AS grp, fs.contract_no, fs.advisor_name, fs.metric_type,
                    fs.amount / 10000.0 AS amount_wan
             FROM fact_fund_snapshot fs
             WHERE fs.snapshot_date = (SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type='未认款')
-              AND fs.metric_type = '未认款' AND {fund_uf}
+              AND fs.metric_type = '未认款' AND {fund_rbac} AND {fund_uf}
         )
         SELECT * FROM unarchived UNION ALL SELECT * FROM unconfirmed
         ORDER BY grp, amount_wan DESC
@@ -335,22 +352,27 @@ async def build_daily_report(
         FROM gs FULL OUTER JOIN rf ON gs.adv = rf.adv ORDER BY net_sign DESC
     """), params)).mappings().all()
 
+    # ── 百萬顧問榜：pay / gs / fund 三表 JOIN key 統一用 actual_advisor ──
+    #    fund CTE 也套 fund_rbac，MANAGER dept_scope 生效
     million_rows = (await db.execute(text(f"""
         WITH pay AS (
-            SELECT advisor_name, SUM(amount)/10000.0 AS total_payment
-            FROM fact_receipt fr WHERE receipt_date BETWEEN :month_start AND :today AND advisor_name!='' AND {r_rbac} AND {r_uf} GROUP BY advisor_name
+            SELECT actual_advisor AS adv, SUM(amount)/10000.0 AS total_payment
+            FROM fact_receipt fr WHERE receipt_date BETWEEN :month_start AND :today AND actual_advisor!='' AND {r_rbac} AND {r_uf} GROUP BY actual_advisor
         ), gs AS (
             SELECT actual_advisor AS adv, SUM(gross_sign)/10000.0 AS gross_sign,
                    SUM(CASE WHEN sign_biz_type='多语' THEN gross_sign ELSE 0 END)/10000.0 AS multilang
             FROM fact_signing fs WHERE sign_date BETWEEN :month_start AND :today AND actual_advisor!='' AND {s_rbac} AND {s_uf} GROUP BY actual_advisor
         ), fund AS (
-            SELECT advisor_name, SUM(amount)/10000.0 AS unarchived_unconfirmed
-            FROM fact_fund_snapshot WHERE snapshot_date=(SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type IN ('已收款未盖章','未认款')) AND advisor_name!='' GROUP BY advisor_name
+            SELECT fs.actual_advisor AS adv, SUM(fs.amount)/10000.0 AS unarchived_unconfirmed
+            FROM fact_fund_snapshot fs
+            WHERE fs.snapshot_date=(SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type IN ('已收款未盖章','未认款'))
+              AND fs.actual_advisor!='' AND {fund_rbac}
+            GROUP BY fs.actual_advisor
         )
-        SELECT pay.advisor_name AS name, ROUND(pay.total_payment,4) AS total_payment,
+        SELECT pay.adv AS name, ROUND(pay.total_payment,4) AS total_payment,
                ROUND(COALESCE(gs.gross_sign,0),4) AS gross_sign, ROUND(COALESCE(gs.multilang,0),4) AS multilang,
                ROUND(COALESCE(fund.unarchived_unconfirmed,0),4) AS unarchived_unconfirmed
-        FROM pay LEFT JOIN gs ON pay.advisor_name = gs.adv LEFT JOIN fund USING(advisor_name)
+        FROM pay LEFT JOIN gs USING(adv) LEFT JOIN fund USING(adv)
         WHERE pay.total_payment > 0 ORDER BY total_payment DESC
     """), params)).mappings().all()
 
@@ -401,6 +423,11 @@ async def build_daily_report(
     """), params)).mappings().all()
     all_advisors = [r["actual_advisor"] for r in all_advisors_rows]
 
+    # ADVISOR 角色：下拉清單只給自己（防止前端塞別人名字送出）
+    is_advisor = (role == "ADVISOR")
+    if is_advisor and advisor_name:
+        all_advisors = [advisor_name]
+
     # ── 财周 ──
     current_fw = get_fiscal_week_number(today)
 
@@ -438,6 +465,11 @@ async def build_daily_report(
             "update_time": today.strftime("%Y/%m/%d") + " 18:00",
             "execution_date": today.isoformat(), "fiscal_week_start": week_start.isoformat(),
             "fiscal_week_number": current_fw,
+        },
+        "viewer": {                       # 前端 UI gating 用
+            "role": role,
+            "advisor_name": advisor_name,
+            "is_advisor": is_advisor,
         },
         "kpi_payment": {
             "daily":       {"value": safe_round(dc,2), "wow_pct": safe_pct(dc,dw_), "yoy_pct": safe_pct(dc,dy)},

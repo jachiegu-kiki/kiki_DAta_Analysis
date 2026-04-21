@@ -524,31 +524,46 @@ def mod_R3():
 # §6  快照模块（第二章 §2.2 - 不做时间分层）
 # ═══════════════════════════════════════════════════════════════
 def snap_receipt():
-    """收款统计：款项类别=留学服务费"""
+    """收款统计：款项类别=留学服务费
+    清洗规则:
+      1. 跳过 contract_no 含 '-MHT-' 的记录（业务废弃/测试合同）
+      2. actual_advisor 优先用 dim_contract_group.actual_advisor（get_actual_advisor 封装）,
+         回退 advisor_name — 与 fact_signing / fact_refund 口径保持一致
+    """
     df = read_excel("receipt")
     if df is None: return []
     if "款项类别" in df.columns:
         df = df[df["款项类别"] == "留学服务费"].copy()
     recs = []
+    skip_mht = 0
     for i, (_, r) in enumerate(df.iterrows()):
         dt = safe_date(r.get("收款日期"))
         rno = cs(r.get("收据号"))
         if not dt or not rno: continue
+        cn = cs(r.get("合同号"))
+        if "-MHT-" in cn:
+            skip_mht += 1
+            continue
+        advisor = cs(r.get("签约顾问"))
         recs.append({
             "receipt_no": rno, "receipt_date": dt,
             "arrived_date": safe_date(r.get("到账日期")),
-            "contract_no": cs(r.get("合同号")),
-            "advisor_name": cs(r.get("签约顾问")),
+            "contract_no": cn,
+            "advisor_name": advisor,
+            "actual_advisor": get_actual_advisor(cn, advisor),
             "dept": cs(r.get("部门")),
             "pay_method": cs(r.get("收款方式")),
             "status": cs(r.get("状态")),
             "amount": cf(r.get("收款金额", 0)),
         })
-    print(f"  收款统计: {len(recs)} 条")
+    print(f"  收款统计: {len(recs)} 条（跳过 -MHT- {skip_mht} 条）")
     return recs
 
 def snap_fund():
-    """已收款未盖章 + 潜在签约 (contractDetail, §2.2)"""
+    """已收款未盖章 + 潜在签约 (contractDetail, §2.2)
+    新增 actual_advisor: 与 fact_receipt / fact_signing 口径统一，
+    供前端「百万顾问榜」跨表 JOIN 使用。
+    """
     df = read_excel("contract")
     if df is None: return []
     recs = []
@@ -573,7 +588,9 @@ def snap_fund():
 
         recs.append({
             "snapshot_date": TODAY, "contract_no": cn,
-            "advisor_name": advisor, "dept": dept,
+            "advisor_name": advisor,
+            "actual_advisor": get_actual_advisor(cn, advisor),
+            "dept": dept,
             "secondary_group": get_group(cn, advisor),
             "metric_type": metric, "amount": balance,
             "contract_status": status,
@@ -597,9 +614,13 @@ def snap_unrecognized():
         # 未认款按顾问找部门（§7.4）
         nm, _ = load_staff_map()
         dept = nm.get(advisor, group) if advisor else group
+        # 未认款场景下没有真实 contract_no（是生成的 URK_ 前缀），
+        # 所以 actual_advisor 直接用原顾问字段
         recs.append({
             "snapshot_date": TODAY, "contract_no": f"URK_{i}_{cs(r.get('汇款附言',''))[:20]}",
-            "advisor_name": advisor, "dept": dept or "未知部门",
+            "advisor_name": advisor,
+            "actual_advisor": advisor,
+            "dept": dept or "未知部门",
             "secondary_group": dept or "未知部门",
             "metric_type": "未认款", "amount": amount,
             "contract_status": cs(r.get("认款状态")),
@@ -803,19 +824,20 @@ def write_receipt(records):
             conn.execute(text("""
                 INSERT INTO fact_receipt
                   (receipt_no,receipt_date,arrived_date,contract_no,
-                   advisor_name,dept,pay_method,status,amount)
+                   advisor_name,actual_advisor,dept,pay_method,status,amount)
                 VALUES (:receipt_no,:receipt_date,:arrived_date,:contract_no,
-                        :advisor_name,:dept,:pay_method,:status,:amount)
+                        :advisor_name,:actual_advisor,:dept,:pay_method,:status,:amount)
                 ON CONFLICT (receipt_no) DO UPDATE SET
-                  receipt_date  = EXCLUDED.receipt_date,
-                  arrived_date  = EXCLUDED.arrived_date,
-                  contract_no   = EXCLUDED.contract_no,
-                  advisor_name  = EXCLUDED.advisor_name,
-                  dept          = EXCLUDED.dept,
-                  pay_method    = EXCLUDED.pay_method,
-                  status        = EXCLUDED.status,
-                  amount        = EXCLUDED.amount,
-                  updated_at    = NOW()
+                  receipt_date    = EXCLUDED.receipt_date,
+                  arrived_date    = EXCLUDED.arrived_date,
+                  contract_no     = EXCLUDED.contract_no,
+                  advisor_name    = EXCLUDED.advisor_name,
+                  actual_advisor  = EXCLUDED.actual_advisor,
+                  dept            = EXCLUDED.dept,
+                  pay_method      = EXCLUDED.pay_method,
+                  status          = EXCLUDED.status,
+                  amount          = EXCLUDED.amount,
+                  updated_at      = NOW()
             """), rec)
             ins += 1
     stats["fact_receipt"] = ins
@@ -829,11 +851,13 @@ def write_fund_snapshot(records):
         conn.execute(text("DELETE FROM fact_fund_snapshot WHERE snapshot_date = :d"), {"d": TODAY})
         for rec in records:
             clean = {k: v for k, v in rec.items() if k != "student_name"}
+            # 兼容性：老 snap_* 可能没送 actual_advisor，此处兜底
+            clean.setdefault("actual_advisor", clean.get("advisor_name", ""))
             conn.execute(text("""
                 INSERT INTO fact_fund_snapshot
-                  (snapshot_date,contract_no,advisor_name,dept,secondary_group,
+                  (snapshot_date,contract_no,advisor_name,actual_advisor,dept,secondary_group,
                    metric_type,amount,contract_status)
-                VALUES (:snapshot_date,:contract_no,:advisor_name,:dept,:secondary_group,
+                VALUES (:snapshot_date,:contract_no,:advisor_name,:actual_advisor,:dept,:secondary_group,
                         :metric_type,:amount,:contract_status)
             """), clean)
     stats["fact_fund_snapshot"] = len(records)

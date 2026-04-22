@@ -13,6 +13,11 @@
 #topbar{position:sticky;top:0;z-index:100;height:56px;display:flex;align-items:center;padding:0 26px;gap:14px;background:var(--grn2);box-shadow:0 2px 8px rgba(0,0,0,.2)}.tb-em{width:32px;height:32px;border-radius:8px;flex-shrink:0;background:linear-gradient(135deg,var(--org),var(--org2));display:flex;align-items:center;justify-content:center;font-family:var(--serif);font-size:15px;font-weight:900;color:#fff}.tb-name{font-family:var(--serif);font-size:16px;font-weight:700;color:#fff;letter-spacing:2px;white-space:nowrap}.tb-sep{width:1px;height:18px;background:rgba(255,255,255,.2);flex-shrink:0}.tb-meta{display:flex;gap:18px;flex-wrap:wrap}.tb-pill{font-size:11.5px;color:rgba(255,255,255,.7);display:flex;align-items:center;gap:4px}.tb-pill b{color:#fff;font-family:var(--mono);font-size:11.5px}.tb-right{margin-left:auto;display:flex;align-items:center;gap:10px}.tb-ts{font-size:11px;color:rgba(255,255,255,.45);border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:3px 11px}.tb-user{font-size:12px;color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.25);border-radius:20px;padding:4px 13px;transition:all .2s}.tb-user:hover{background:rgba(255,255,255,.1);color:#fff}
 .demo-band{background:linear-gradient(90deg,var(--org-l),rgba(255,243,234,.4),var(--org-l));border-bottom:1px solid rgba(244,121,32,.2);padding:7px 26px;font-size:11.5px;color:var(--org2);display:flex;align-items:center;gap:8px}.demo-dot{width:7px;height:7px;border-radius:50%;background:var(--org);animation:pulse 2s infinite;flex-shrink:0}@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.75)}}
 .fp-wrap{background:var(--white);border-bottom:2px solid var(--grn)}.fp-inner{padding:14px 26px;display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap}.fp-group{display:flex;flex-direction:column;gap:5px}.fp-lbl{font-size:10px;color:var(--t2);font-weight:700;letter-spacing:.9px;text-transform:uppercase}select[multiple].fp-sel{appearance:none;-webkit-appearance:none;background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r);padding:4px 6px;color:var(--t0);font-size:12.5px;font-family:var(--sans);outline:none;cursor:pointer;height:78px;transition:border-color .2s,box-shadow .2s}select[multiple].fp-sel:focus{border-color:var(--grn);box-shadow:0 0 0 2px var(--grn-m)}select[multiple].fp-sel option{padding:3px 8px;border-radius:3px}select[multiple].fp-sel option:checked{background:var(--grn-m);color:var(--grn2);font-weight:600}.fp-btns{display:flex;gap:8px;align-items:flex-end;padding-bottom:1px}.fp-apply{padding:8px 18px;background:var(--grn);color:#fff;border-radius:var(--r);font-size:12.5px;font-weight:700;box-shadow:0 2px 6px var(--grn-m);transition:opacity .2s,transform .1s}.fp-apply:hover{opacity:.9;transform:translateY(-1px)}.fp-clear{padding:8px 14px;border:1.5px solid var(--bd2);color:var(--t2);border-radius:var(--r);font-size:12.5px;transition:all .2s}.fp-clear:hover{border-color:var(--dn);color:var(--dn)}.fp-tags{min-height:32px;padding:5px 26px;display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--bd);background:var(--s1)}.fp-tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;background:var(--grn-m);color:var(--grn2);border:1px solid rgba(0,112,60,.22);border-radius:20px;padding:3px 10px}.fp-tag .x{cursor:pointer;opacity:.6;font-size:13px;line-height:1}.fp-tag .x:hover{opacity:1;color:var(--dn)}.fp-none{font-size:11.5px;color:var(--t3);font-style:italic}
+/* v5.1 手风琴 DOM 重组在桌面端「透明化」：display:contents 让 .fp-acc-body
+   wrapper 彷彿不存在，子元素（filter groups）直接参与 .fp-inner 的 flex 布局，
+   保持原横向排列；acc-arrow/acc-badge 只在手机端显示。*/
+.fp-acc-body{display:contents}
+.acc-arrow,.acc-badge{display:none}
 .fp-loading{font-size:11.5px;color:var(--org2);font-weight:600;animation:pulse 1s infinite}
 main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30px}.sec-hd{display:flex;align-items:center;gap:12px;margin-bottom:18px}.sec-ttl{font-family:var(--serif);font-size:15px;font-weight:700;color:var(--grn2);letter-spacing:1.5px;white-space:nowrap;display:flex;align-items:center;gap:8px}.sec-ttl::before{content:'';display:block;width:4px;height:16px;background:var(--org);border-radius:2px;flex-shrink:0}.sec-line{flex:1;height:1px;background:var(--bd)}.sec-tag{font-size:10px;font-family:var(--mono);color:var(--t3);border:1px solid var(--bd);border-radius:3px;padding:2px 7px}
 .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}@media(max-width:1100px){.kpi-grid{grid-template-columns:repeat(2,1fr)}}.kc{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r2);padding:18px 20px;position:relative;overflow:hidden;transition:border-color .2s,box-shadow .2s,transform .15s}.kc::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--grn);border-radius:var(--r2) var(--r2) 0 0}.kc:hover{border-color:var(--grn);box-shadow:var(--shadow-md);transform:translateY(-1px)}.kc-lbl{font-size:10.5px;color:var(--t2);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:10px;font-weight:600}.kc-val{font-family:var(--mono);font-size:28px;font-weight:700;color:var(--t0);margin-bottom:8px;line-height:1}.kc-val sup{font-size:13px;color:var(--t2);font-weight:400;margin-left:2px}.kc-val.neg{color:var(--dn)}.kc-sub{font-size:11px;color:var(--t3);margin-bottom:8px;font-family:var(--mono)}.kc-bd{display:flex;flex-wrap:wrap;gap:5px}.bdg{font-size:11px;font-family:var(--mono);padding:2px 8px;border-radius:4px;font-weight:500}.bdg.up{color:var(--up);background:var(--up-l);border:1px solid rgba(0,112,60,.2)}.bdg.dn{color:var(--dn);background:var(--dn-l);border:1px solid rgba(217,48,37,.2)}.bdg.nt{color:var(--t2);background:var(--s1);border:1px solid var(--bd)}.pg{margin-top:12px}.pg-hd{display:flex;justify-content:space-between;font-size:10.5px;color:var(--t2);margin-bottom:4px;font-family:var(--mono)}.pg-track{height:10px;background:var(--s2);border-radius:5px;position:relative}.pg-bar{height:100%;border-radius:5px;transition:width .7s cubic-bezier(.25,.8,.25,1)}.pg-bar.hit{background:linear-gradient(90deg,var(--grn),#00a858)}.pg-bar.miss{background:linear-gradient(90deg,var(--org),#f5a050)}.pg-marker{position:absolute;top:-3px;width:2.5px;height:16px;background:var(--dn);border-radius:1px;z-index:2;transition:left .7s cubic-bezier(.25,.8,.25,1)}.pg-marker::after{content:'';position:absolute;top:-4px;left:50%;transform:translateX(-50%);width:7px;height:7px;background:var(--dn);border-radius:50%;border:1.5px solid var(--white);box-shadow:0 1px 3px rgba(0,0,0,.2)}
@@ -24,7 +29,15 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
 /* ═══ ETL Trigger Button ═══ */
 .tb-etl{font-size:11.5px;color:#fff;border:1.5px solid rgba(255,255,255,.35);border-radius:20px;padding:4px 14px;transition:all .25s;display:flex;align-items:center;gap:5px;white-space:nowrap;background:rgba(244,121,32,.15)}.tb-etl:hover{background:var(--org);border-color:var(--org);box-shadow:0 2px 10px rgba(244,121,32,.4)}.tb-etl.running{pointer-events:none;opacity:.7;animation:pulse 1s infinite}.tb-etl .etl-icon{font-size:13px;line-height:1}
 
-/* ═══ 手机端全局响应式 ═══ */
+/* ═══ 手机端全局响应式 v2.0 ═══
+   UX 研究理论应用：
+   ── Material Design Mobile 密度规范：dense list (48dp)、compact chip (32dp)
+   ── iOS HIG：关键操作按钮 sticky-bottom，手可及区域（thumb zone）
+   ── Fitts's Law：高频交互元素（应用按钮）置于拇指自然弧线内
+   ── Miller's Law (7±2)：13 个筛选器分 3 组手风琴折叠，认知负荷 3≈最优
+   ── Hick's Law：默认全收起，选中时才展开，减少决策时间
+   第一性原理：手机屏 360×640，信息密度要高、垂直滚动要短。
+   ─────────────────────────────────────────────────────────── */
 @media(max-width:768px){
   .lc{width:calc(100vw - 32px);max-width:420px;margin:16px;border-radius:var(--r2)}
   .lc-top{padding:22px 22px 20px}.lc-top::after{font-size:90px;right:-8px;bottom:-20px}
@@ -33,6 +46,7 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
   .lc-body{padding:20px 22px 24px}.lc-hint{font-size:11px;padding:8px 12px;margin-bottom:16px}
   .lc-inp{padding:12px 14px;font-size:15px;border-radius:var(--r);margin-bottom:12px}
   .lc-btn{padding:14px;font-size:14px;border-radius:var(--r)}
+  /* ─ TOPBAR：紧凑化 ─ */
   #topbar{height:auto;min-height:50px;padding:10px 14px;flex-wrap:wrap;gap:8px}
   .tb-em{width:28px;height:28px;font-size:13px;border-radius:7px}
   .tb-name{font-size:13px;letter-spacing:1px}
@@ -44,38 +58,117 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
   .mob-meta{display:flex !important;flex-wrap:wrap;gap:6px;width:100%;padding:0;margin-top:2px}
   .mob-meta .tb-pill{font-size:10px;color:rgba(255,255,255,.7)}.mob-meta .tb-pill b{font-size:10px}
   .demo-band{padding:5px 14px;font-size:10px}
-  .fp-inner{padding:12px 14px;flex-direction:column;gap:10px}
-  .fp-group{width:100%}
+
+  /* ═══ 筛选器区：手风琴折叠 + 2 栏 grid ═══
+     将「条线/团队/通用」三个分组标题变成可折叠手风琴 head。
+     默认全部收起（Hick's Law：减少初始决策量）。
+     展开时筛选器用 2 栏 grid（比 1 栏节省 50% 垂直空间）。
+     已选筛选器数量在 head 上用 badge 常驻显示。*/
+  .fp-wrap{border-bottom:1.5px solid var(--grn)}
+  .fp-inner{padding:0;display:block}
+  /* 分组标签 → 手风琴 head（.fp-group[data-role=accordion-head]）*/
+  .fp-group.acc-head{
+    width:100%;padding:11px 14px;margin:0;border-top:1px solid var(--bd);
+    background:var(--s1);display:flex !important;flex-direction:row !important;
+    align-items:center;justify-content:space-between;cursor:pointer;
+    user-select:none;transition:background .15s}
+  .fp-group.acc-head:first-child{border-top:none}
+  .fp-group.acc-head:active{background:var(--grn-l)}
+  .fp-group.acc-head .fp-lbl{font-size:12px;margin:0;letter-spacing:.5px;
+    display:flex;align-items:center;gap:8px}
+  .fp-group.acc-head .acc-arrow{
+    font-size:11px;color:var(--t2);transition:transform .25s;
+    width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;
+    border-radius:50%;background:var(--white);border:1px solid var(--bd)}
+  .fp-group.acc-head.open .acc-arrow{transform:rotate(180deg);border-color:var(--grn);color:var(--grn2)}
+  .fp-group.acc-head .acc-badge{
+    display:none;font-size:10px;background:var(--grn);color:#fff;
+    border-radius:10px;padding:1px 7px;font-weight:700;min-width:18px;
+    text-align:center;margin-left:auto;margin-right:6px;font-family:var(--mono)}
+  .fp-group.acc-head.has-sel .acc-badge{display:inline-block}
+  /* 手风琴 body：2 栏 grid（filtere group 容器）*/
+  .fp-acc-body{
+    display:none;padding:10px 14px 12px;
+    grid-template-columns:1fr 1fr;gap:8px 10px;
+    background:var(--white);border-top:1px solid var(--bd);
+    animation:acc-in .22s ease}
+  .fp-acc-body.open{display:grid}
+  @keyframes acc-in{from{opacity:0;transform:translateY(-4px)}to{opacity:1;transform:none}}
+  /* 手风琴内的普通 filter group（不是 head）*/
+  .fp-acc-body .fp-group{width:auto;margin:0;gap:3px}
+  .fp-acc-body .fp-lbl{font-size:9.5px;letter-spacing:.5px;margin-bottom:0}
+  /* dropdown 按钮紧凑化 */
+  .fp-acc-body .dd{min-width:0;width:100%}
+  .fp-acc-body .dd-btn{padding:7px 9px;font-size:11.5px;min-height:32px;
+    border-radius:var(--r);max-width:100%;overflow:hidden}
+  .fp-acc-body .dd-btn > span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:calc(100% - 14px)}
+  /* dropdown 列表下拉尺寸 */
+  .fp-acc-body .dd-list{max-height:220px;font-size:11.5px}
+  .fp-acc-body .dd-item{padding:7px 10px;font-size:11.5px}
   select[multiple].fp-sel{width:100% !important;height:68px;font-size:13px}
-  .fp-btns{width:100%;justify-content:stretch;gap:8px}
-  .fp-apply,.fp-clear{flex:1;padding:11px 14px;font-size:13px;text-align:center;border-radius:var(--r)}
-  .fp-tags{padding:5px 14px;gap:4px}.fp-tag{font-size:10.5px;padding:3px 8px}
-  .fp-lbl{font-size:9.5px}
-  main{padding:14px 12px 50px}.sec{margin-bottom:20px}
+
+  /* ═══ 应用按钮区：sticky-bottom ═══
+     Fitts's Law：主操作按钮放大到 44px 高（iOS HIG 最小 44pt），
+     置于屏幕底部拇指可及区，避免用户需滚到最上方才能应用。
+     使用 position:sticky 而非 fixed：保留文档流、避免遮挡表格底部。*/
+  .fp-btns{
+    position:sticky;bottom:0;z-index:30;
+    width:100%;padding:10px 14px;margin:0;gap:8px;
+    background:rgba(255,255,255,.96);backdrop-filter:blur(6px);
+    -webkit-backdrop-filter:blur(6px);
+    border-top:1px solid var(--bd);border-bottom:1.5px solid var(--grn);
+    box-shadow:0 -2px 12px rgba(0,40,0,.06)}
+  .fp-apply,.fp-clear{flex:1;padding:11px 14px;font-size:13px;
+    text-align:center;border-radius:var(--r);min-height:42px;font-weight:700}
+
+  /* ═══ 已选标签区：紧凑横向滚动 chip ═══ */
+  .fp-tags{padding:6px 12px;gap:5px;overflow-x:auto;flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;min-height:30px;
+    scrollbar-width:none}
+  .fp-tags::-webkit-scrollbar{display:none}
+  .fp-tag{font-size:10.5px;padding:3px 9px;white-space:nowrap;flex-shrink:0}
+  .fp-none{font-size:10.5px;white-space:nowrap}
+
+  /* ═══ 主内容区 ═══ */
+  main{padding:14px 12px 70px}.sec{margin-bottom:20px}
   .sec-hd{margin-bottom:12px;gap:8px}
   .sec-ttl{font-size:13px;letter-spacing:1px}.sec-ttl::before{width:3px;height:14px}
   .sec-tag{font-size:9px;padding:2px 5px}
-  .kpi-grid{grid-template-columns:1fr !important;gap:10px}
-  .kc{padding:14px 16px;border-radius:var(--r)}
-  .kc-lbl{font-size:10px;margin-bottom:6px;letter-spacing:1px}
-  .kc-val{font-size:24px}.kc-val sup{font-size:11px}
-  .kc-sub{font-size:10.5px;margin-bottom:6px}
-  .kc-bd{gap:4px}.bdg{font-size:10px;padding:2px 6px}
-  .pg{margin-top:8px}.pg-hd{font-size:9.5px}
-  .pc-row{flex-direction:column;gap:10px;margin-bottom:14px}
-  .pc{min-width:unset;width:100%;padding:12px 16px;border-radius:var(--r)}
-  .pc-lbl{font-size:10.5px}.pc-val{font-size:20px}.pc-formula{font-size:9.5px}
-  .tbl-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:var(--r2);border:1.5px solid var(--bd)}
-  .tbl-scroll .pt{border:none;border-radius:0;min-width:580px}
-  .pt th{font-size:9.5px;padding:8px 10px;white-space:nowrap}
-  .pt td{font-size:12px;padding:7px 10px}
-  .pt .dr td:first-child{font-size:12px}.pt .cr td{font-size:11px}
-  .pt .cr td:first-child{padding-left:28px}
-  .pt tfoot td{font-size:12px;padding:8px 10px}.ct-no{font-size:10px}
-  .av-grid{grid-template-columns:1fr !important;gap:14px}
-  .av-hd{padding:10px 14px}.av-ttl{font-size:12px}
-  .rt th{font-size:9.5px;padding:6px 10px}.rt td{font-size:12px;padding:7px 10px}
-  .mn{font-size:11.5px !important}.tgl-btn{padding:8px;font-size:11px}
+
+  /* ═══ KPI 卡片：2 栏 grid（比 1 栏节省 50% 垂直空间）═══
+     第一性原理：KPI 是"浏览式"信息，用户是在扫视对比，不是逐个深读。
+     2 栏布局才利于横向对比（日/周、月/财年）。字号相应缩小。*/
+  .kpi-grid{grid-template-columns:1fr 1fr !important;gap:8px}
+  .kc{padding:11px 12px;border-radius:var(--r)}
+  .kc-lbl{font-size:9.5px;margin-bottom:5px;letter-spacing:.8px}
+  .kc-val{font-size:19px;margin-bottom:5px}.kc-val sup{font-size:9px}
+  .kc-sub{font-size:9.5px;margin-bottom:5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .kc-bd{gap:3px}.bdg{font-size:9px;padding:1px 5px}
+  .pg{margin-top:6px}.pg-hd{font-size:9px}
+  .pg-track{height:8px}
+  .pg-marker{height:14px}
+
+  /* ═══ 潜在签约三指标卡：2 栏（合计 + 合计 + 独占 1 行）═══ */
+  .pc-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+  .pc{min-width:0;width:100%;padding:10px 12px;border-radius:var(--r)}
+  .pc.net{grid-column:1 / -1}
+  .pc-lbl{font-size:10px}.pc-val{font-size:18px}.pc-formula{font-size:9px;margin-top:3px}
+
+  /* ═══ 潜在签约表格：关键 UX - 拇指滚动区域 ═══ */
+  .tbl-scroll{width:100%;overflow-x:auto;-webkit-overflow-scrolling:touch;
+    border-radius:var(--r2);border:1.5px solid var(--bd)}
+  .tbl-scroll .pt{border:none;border-radius:0;min-width:560px}
+  .pt th{font-size:9.5px;padding:7px 9px;white-space:nowrap}
+  .pt td{font-size:11.5px;padding:6px 9px}
+  .pt .dr td:first-child{font-size:11.5px}.pt .cr td{font-size:10.5px}
+  .pt .cr td:first-child{padding-left:24px}
+  .pt tfoot td{font-size:11.5px;padding:7px 9px}.ct-no{font-size:9.5px}
+
+  /* ═══ 顾问排行：1 栏（对比不重要，重要的是看名次）═══ */
+  .av-grid{grid-template-columns:1fr !important;gap:12px}
+  .av-hd{padding:9px 12px}.av-ttl{font-size:12px}
+  .rt th{font-size:9.5px;padding:6px 9px}.rt td{font-size:11.5px;padding:6px 9px}
+  .mn{font-size:11px !important}.tgl-btn{padding:8px;font-size:11px}
 }
 @media(min-width:769px) and (max-width:1100px){
   .fp-inner{flex-wrap:wrap}.fp-group{min-width:140px}
@@ -211,8 +304,81 @@ async function fetchReport(execDate, filterParams) {
   if (CU.role === 'ADVISOR') {
     document.body.classList.add('role-advisor');
   }
+  // v5.1 手机端 UX：将筛选器重组为手风琴结构（桌面端不生效）
+  setupMobileAccordion();
   await fetchReport();
 })();
+
+/* ═══ v5.1 手机端手风琴筛选器
+   第一性原理：原 HTML 13 个筛选器扁平排列，手机端 1 栏会占 13 行高，
+   严重超过 Miller's Law 认知负荷（7±2）。按照现有的 3 个分组标签
+   （按条线/按团队/通用）做手风琴折叠，默认全部收起。
+   做法：纯 DOM 重组，不侵入 HTML 结构、不影响桌面端渲染、不改 JS 逻辑。
+   ─────────────────────────────────────────────────────────── */
+function setupMobileAccordion() {
+  var inner = document.querySelector('.fp-wrap .fp-inner');
+  if (!inner) return;
+  // 识别分组标签（通过 fp-lbl 里的文字特征 ▎开头）
+  var children = Array.from(inner.children);
+  var groups = [];  // [{head: groupEl, items: [groupEl,...]}]
+  var current = null;
+  children.forEach(function(el) {
+    if (!el.classList.contains('fp-group')) return;
+    var lbl = el.querySelector('.fp-lbl');
+    if (lbl && /^▎/.test((lbl.textContent || '').trim())) {
+      // 新分组标签
+      if (current) groups.push(current);
+      current = { head: el, items: [] };
+    } else if (current) {
+      current.items.push(el);
+    }
+  });
+  if (current) groups.push(current);
+  if (groups.length === 0) return;  // 无分组标签 → 保持原样
+
+  groups.forEach(function(g, idx) {
+    // 1. 分组 head 挂 class，加箭头和 badge
+    g.head.classList.add('acc-head');
+    g.head.setAttribute('data-acc-idx', idx);
+    var headLbl = g.head.querySelector('.fp-lbl');
+    if (headLbl && !headLbl.querySelector('.acc-badge')) {
+      headLbl.insertAdjacentHTML('beforeend',
+        ' <span class="acc-badge" data-acc-badge="'+idx+'">0</span>');
+    }
+    if (!g.head.querySelector('.acc-arrow')) {
+      g.head.insertAdjacentHTML('beforeend', '<span class="acc-arrow">▾</span>');
+    }
+    // 2. 包裹 items 到 .fp-acc-body
+    var body = document.createElement('div');
+    body.className = 'fp-acc-body';
+    body.setAttribute('data-acc-body', idx);
+    g.items.forEach(function(it) { body.appendChild(it); });
+    g.head.parentNode.insertBefore(body, g.head.nextSibling);
+    // 3. head 点击切换展开
+    g.head.addEventListener('click', function(e) {
+      // 避免冒泡到内层 dd（虽然此时 body 已经不在 head 内部，但保险）
+      if (e.target.closest('.dd')) return;
+      this.classList.toggle('open');
+      var b = document.querySelector('[data-acc-body="'+idx+'"]');
+      if (b) b.classList.toggle('open');
+    });
+  });
+}
+
+/* 更新手风琴 head 上的 badge 数字（由已选筛选计数变化时调用）*/
+function updateAccordionBadges() {
+  document.querySelectorAll('[data-acc-body]').forEach(function(body) {
+    var idx = body.getAttribute('data-acc-body');
+    var count = body.querySelectorAll('.dd .dd-item input:checked').length;
+    var badge = document.querySelector('[data-acc-badge="'+idx+'"]');
+    var head  = document.querySelector('.acc-head[data-acc-idx="'+idx+'"]');
+    if (badge) badge.textContent = count;
+    if (head) {
+      if (count > 0) head.classList.add('has-sel');
+      else head.classList.remove('has-sel');
+    }
+  });
+}
 
 /* ═══ FILTER STATE ═══ */
 var fLine=[], fSubLine=[], fGSys=[], fBlock=[], fGL1=[], fGAdv=[], fBType=[], fA=[], fFY=[], fYM=[], fFW=[];
@@ -304,6 +470,8 @@ function ddOnChange(id) {
   if (id === 'f-subline') { rebuildGsys(); }
   if (id === 'f-block')   { rebuildGl1(); rebuildGadv(); }
   if (id === 'f-gl1')     { rebuildGadv(); }
+  // v5.1 手机端：刷新手风琴 head 徽章
+  if (typeof updateAccordionBadges === 'function') updateAccordionBadges();
 }
 
 function opts(arr) { return arr; }
@@ -375,6 +543,9 @@ function buildOptions() {
     fwArr.push('FW' + fyYear + '-' + w + (w === fwNum ? '（本周）' : ''));
   }
   ddSetItems('f-fw', fwArr);
+
+  // v5.1 手机端：首次/重建选项后刷新手风琴 badge
+  if (typeof updateAccordionBadges === 'function') updateAccordionBadges();
 }
 
 /* ═══ 级联联动（v4.3：单向重建，避免重建自身清掉选中状态）═══ */
@@ -512,6 +683,7 @@ async function clearFilters() {
   fLine=[]; fSubLine=[]; fGSys=[]; fBlock=[]; fGL1=[]; fGAdv=[]; fBType=[]; fA=[]; fFY=[]; fYM=[]; fFW=[];
   buildOptions();
   renderTags();
+  if (typeof updateAccordionBadges === 'function') updateAccordionBadges();
   $('ftags').innerHTML = '<span class="fp-loading">⏳ 正在加载数据...</span>';
   await fetchReport(origExecDate);
   renderTags();

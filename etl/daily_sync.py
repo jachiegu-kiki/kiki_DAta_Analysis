@@ -554,6 +554,7 @@ def snap_receipt():
             "dept": cs(r.get("部门")),
             "pay_method": cs(r.get("收款方式")),
             "status": cs(r.get("状态")),
+            "sign_biz_type": "留学",  # filter 已保證 款项类别=='留学服务费'
             "amount": cf(r.get("收款金额", 0)),
         })
     print(f"  收款统计: {len(recs)} 条（跳过 -MHT- {skip_mht} 条）")
@@ -824,9 +825,9 @@ def write_receipt(records):
             conn.execute(text("""
                 INSERT INTO fact_receipt
                   (receipt_no,receipt_date,arrived_date,contract_no,
-                   advisor_name,actual_advisor,dept,pay_method,status,amount)
+                   advisor_name,actual_advisor,dept,pay_method,status,sign_biz_type,amount)
                 VALUES (:receipt_no,:receipt_date,:arrived_date,:contract_no,
-                        :advisor_name,:actual_advisor,:dept,:pay_method,:status,:amount)
+                        :advisor_name,:actual_advisor,:dept,:pay_method,:status,:sign_biz_type,:amount)
                 ON CONFLICT (receipt_no) DO UPDATE SET
                   receipt_date    = EXCLUDED.receipt_date,
                   arrived_date    = EXCLUDED.arrived_date,
@@ -836,6 +837,7 @@ def write_receipt(records):
                   dept            = EXCLUDED.dept,
                   pay_method      = EXCLUDED.pay_method,
                   status          = EXCLUDED.status,
+                  sign_biz_type   = EXCLUDED.sign_biz_type,
                   amount          = EXCLUDED.amount,
                   updated_at      = NOW()
             """), rec)

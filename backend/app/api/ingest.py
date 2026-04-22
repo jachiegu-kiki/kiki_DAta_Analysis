@@ -147,10 +147,10 @@ async def ingest_receipt(
             result = await db.execute(text("""
                 INSERT INTO fact_receipt
                     (receipt_no, receipt_date, arrived_date, contract_no,
-                     advisor_name, dept, pay_method, status, amount)
+                     advisor_name, dept, pay_method, status, sign_biz_type, amount)
                 VALUES
                     (:receipt_no, :receipt_date, :arrived_date, :contract_no,
-                     :advisor_name, :dept, :pay_method, :status, :amount)
+                     :advisor_name, :dept, :pay_method, :status, :sign_biz_type, :amount)
                 ON CONFLICT (receipt_no) DO NOTHING
             """), rec.model_dump())
             if result.rowcount == 0:

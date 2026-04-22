@@ -315,12 +315,13 @@ def migrate_fact_receipt():
                    "dept":str(r.get("部门","") or "").strip(),
                    "pay_method":str(r.get("收款方式","") or "").strip(),
                    "status":str(r.get("状态","") or "").strip(),
+                   "sign_biz_type":"留学",
                    "amount":clean_float(r.get("收款金额",0))}
             result = conn.execute(text("""
                 INSERT INTO fact_receipt (receipt_no,receipt_date,arrived_date,contract_no,
-                  advisor_name,dept,pay_method,status,amount)
+                  advisor_name,dept,pay_method,status,sign_biz_type,amount)
                 VALUES (:receipt_no,:receipt_date,:arrived_date,:contract_no,
-                        :advisor_name,:dept,:pay_method,:status,:amount)
+                        :advisor_name,:dept,:pay_method,:status,:sign_biz_type,:amount)
                 ON CONFLICT (receipt_no) DO NOTHING
             """), rec)
             if result.rowcount == 0: skipped += 1

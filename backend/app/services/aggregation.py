@@ -1,11 +1,15 @@
 # backend/app/services/aggregation.py
 """
-聚合服务 v4.0:
+聚合服务 v4.2:
   - 双口径分组（系统口径 / 顾问口径）
   - 级联筛选器（按条线 / 按团队）+ 业务类型筛选
   - 顾问排行使用 actual_advisor
   - 潜在签约使用 secondary_group（非 dept）
   - 净签目标根据筛选条件联动
+  - RBAC v4.2: 四张 fact 表 (signing / refund / receipt / fund_snapshot)
+    MANAGER 全部统一为 secondary_group_advisor 顾问口径
+  - dim_gd_rows 改为从用户可见数据反推，使 biz_block / group_l1 /
+    group_advisor 三个 dropdown 都受 dept_scope 约束
 """
 from datetime import date, timedelta
 from typing import Optional, List
@@ -89,25 +93,27 @@ async def build_daily_report(
         last_day = cal.monthrange(prev_month_start.year, prev_month_start.month)[1]
         prev_month_today = today.replace(year=prev_month_start.year, month=prev_month_start.month, day=last_day)
 
-    # ── RBAC ──
-    # 統一口徑:
-    #   ADMIN        → 無條件
-    #   MANAGER      → 按部門切面（sign/refund 走 secondary_group，receipt 走 dept LIKE，fund 走 secondary_group）
-    #   ADVISOR      → 按 actual_advisor（四張表對稱，和前端下拉/顧問排行一致）
+    # ── RBAC (v4.2) ──
+    # 統一口徑（四張 fact 表對稱）:
+    #   ADMIN    → 無條件
+    #   MANAGER  → 按「顧問口徑」分組部門 (secondary_group_advisor)
+    #              ＝ 現在掛在我團隊下的顧問所簽的合同，跟著人走
+    #              signing / refund / receipt / fund_snapshot 全部統一
+    #   ADVISOR  → 按 actual_advisor（四張表對稱，和前端下拉/顧問排行一致）
     # 對稱性原則: 每張 fact 表都有對應 rbac_* 函數，任何新查詢都知道要帶 RBAC。
     def rbac_sign(alias="fs"):
         if role == "ADMIN": return "1=1"
-        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group = :dept_scope"
+        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group_advisor = :dept_scope"
         if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
     def rbac_receipt(alias="fr"):
         if role == "ADMIN": return "1=1"
-        if role == "MANAGER" and dept_scope: return f"{alias}.dept LIKE :dept_like"
+        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group_advisor = :dept_scope"
         if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
     def rbac_fund(alias="fs"):
         if role == "ADMIN": return "1=1"
-        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group = :dept_scope"
+        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group_advisor = :dept_scope"
         if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
 
@@ -171,6 +177,7 @@ async def build_daily_report(
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
+        if adv_group_all:    clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
         return " AND ".join(clauses) if clauses else "1=1"
 
     def ufilter_fund(alias="fs"):
@@ -399,11 +406,28 @@ async def build_daily_report(
     """), params)).mappings().all()
     all_group_sys = [{"value": r["secondary_group"], "parent": r["sub_line"]} for r in all_group_sys_rows]
 
-    dim_gd_rows = (await db.execute(text("""
-        SELECT DISTINCT biz_block, primary_group, secondary_group
-        FROM dim_group_dept WHERE biz_block != '' AND primary_group != ''
-        ORDER BY biz_block, primary_group, secondary_group
-    """))).mappings().all()
+    # ── 顧問口徑維度 dropdown 來源 ──
+    # 關鍵：不再裸查 dim_group_dept（會漏掉 RBAC），而是從「用戶實際可見的
+    # fact_signing 數據」反推 secondary_group_advisor，再 JOIN dim 拿到
+    # biz_block / primary_group 映射。這樣:
+    #   ADMIN   → 看所有有簽約數據的分組
+    #   MANAGER → 自動收斂到自己 dept_scope 這一支（含回溯到的一級組/板塊）
+    #   ADVISOR → 只剩自己合同所屬的分組
+    # 與 all_group_sys 的行為完全對稱。
+    dim_gd_rows = (await db.execute(text(f"""
+        SELECT DISTINCT dgd.biz_block, dgd.primary_group, dgd.secondary_group
+        FROM dim_group_dept dgd
+        INNER JOIN (
+            SELECT DISTINCT fs.secondary_group_advisor AS grp
+            FROM fact_signing fs
+            WHERE fs.sign_date BETWEEN :fy_start AND :today
+              AND fs.secondary_group_advisor != ''
+              AND fs.secondary_group_advisor != '未知部门'
+              AND {s_rbac}
+        ) v ON dgd.secondary_group = v.grp
+        WHERE dgd.biz_block != '' AND dgd.primary_group != ''
+        ORDER BY dgd.biz_block, dgd.primary_group, dgd.secondary_group
+    """), params)).mappings().all()
 
     all_biz_blocks = sorted(set(r["biz_block"] for r in dim_gd_rows))
     seen_l1 = set()

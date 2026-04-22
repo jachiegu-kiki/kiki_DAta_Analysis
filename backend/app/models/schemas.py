@@ -88,6 +88,7 @@ class ReceiptRecord(BaseModel):
     dept:           str = ""
     pay_method:     str = ""
     status:         str = ""
+    sign_biz_type:  str = "留学"     # 业务类型（留学/多语），与 fact_signing 对齐
 
     @field_validator("amount")
     @classmethod
@@ -95,6 +96,13 @@ class ReceiptRecord(BaseModel):
         if math.isnan(v) or math.isinf(v):
             raise ValueError("amount 不可为 NaN 或 Inf")
         return round(v, 2)
+
+    @field_validator("sign_biz_type")
+    @classmethod
+    def validate_biz_type(cls, v):
+        if v not in ("留学", "多语"):
+            raise ValueError("sign_biz_type 必须为 '留学' 或 '多语'")
+        return v
 
 
 class IngestReceiptPayload(BaseModel):

@@ -1,26 +1,28 @@
 # backend/app/services/aggregation.py
 """
-聚合服务 v4.3:
-  - 双口径分组（系统口径 / 顾问口径）
-  - 级联筛选器（按条线 / 按团队）+ 业务类型筛选
-  - 顾问排行使用 actual_advisor
-  - 潜在签约使用 secondary_group（非 dept）
-  - 净签目标根据筛选条件联动
-  - RBAC v4.2: 四张 fact 表 (signing / refund / receipt / fund_snapshot)
-    MANAGER 全部统一为 secondary_group_advisor 顾问口径
-  - dim_gd_rows 改为从用户可见数据反推，使 biz_block / group_l1 /
-    group_advisor 三个 dropdown 都受 dept_scope 约束
+聚合服务 v5.0
+────────────────────────────────────────────────────────────────
+本版变更（相对 v4.2 / v4.3）:
+  [Fix P1] rbac_receipt MANAGER 分支误引用 fact_receipt.secondary_group_advisor
+           （此列不存在）→ 改走 contract_no → fact_signing 子查询。
+  [Fix P2] rbac_fund MANAGER 分支同上 → 改走 contract_no 子查询。
+  [Fix P3] ufilter_receipt 的 adv_group_all 分支同上 → 改走 contract_no
+           子查询。P1/P2/P3 合并用同一个 helper 产生。
+  [v4.3]   receipt 永久剔除 status='作废'；receipt/fund 支援 line / sub_line
+           / group_sys / biz_type filter 经 contract_no 回溯 fact_signing。
+  [新] 目标表 dim_monthly_target 支援 sign_biz_type 维度（migration 07）。
+           filter_biz_type 时 target 自动按 biz_type 求和。
+  [新] SCOPED 角色: 多维度多值白名单（line / biz_block 等）作为永久
+           WHERE 子句，套在所有 fact 表 + metadata 下拉 + target 查询上。
+           用户 UI filter 仍可在 scope 内进一步收敛（AND 交集）。
 
-v4.3 变更（基于第一性原理）：
-  收据/快照本身不带「条线」维度，该维度只存在于 fact_signing —
-  因此 line/sub_line 必须经 contract_no → fact_signing 子查询下推。
-  1) ufilter_receipt：硬性剔除 status='作废'（本表状态字段本地过滤最便宜）；
-     新增 line/sub_line 经 contract_no 子查询、sign_biz_type 本表直接过滤。
-  2) ufilter_fund：新增 line/sub_line/sign_biz_type 经 contract_no 子查询下推。
-  → 条线联动 / 作废剔除 / 多语归零，一次对齐。无 schema 变更，无前端变更。
+第一性原理:
+  RBAC 不是魔法标签，是「能看哪些 row」的谓词。任何维度缺列，
+  就用 contract_no 回溯 fact_signing 推导，避免 schema 硬扩展。
+────────────────────────────────────────────────────────────────
 """
 from datetime import date, timedelta
-from typing import Optional, List
+from typing import Optional, List, Dict
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 import math
@@ -65,6 +67,7 @@ def safe_round(v, digits=2):
 async def build_daily_report(
     db: AsyncSession, today: date, role: str = "ADMIN",
     dept_scope: Optional[str] = None, advisor_name: Optional[str] = None,
+    scope: Optional[Dict[str, List[str]]] = None,   # v5 新增: SCOPED 角色用
     filter_depts: Optional[List[str]] = None,
     filter_advisors: Optional[List[str]] = None,
     filter_line: Optional[List[str]] = None,
@@ -101,27 +104,85 @@ async def build_daily_report(
         last_day = cal.monthrange(prev_month_start.year, prev_month_start.month)[1]
         prev_month_today = today.replace(year=prev_month_start.year, month=prev_month_start.month, day=last_day)
 
-    # ── RBAC (v4.2) ──
-    # 統一口徑（四張 fact 表對稱）:
-    #   ADMIN    → 無條件
-    #   MANAGER  → 按「顧問口徑」分組部門 (secondary_group_advisor)
-    #              ＝ 現在掛在我團隊下的顧問所簽的合同，跟著人走
-    #              signing / refund / receipt / fund_snapshot 全部統一
-    #   ADVISOR  → 按 actual_advisor（四張表對稱，和前端下拉/顧問排行一致）
-    # 對稱性原則: 每張 fact 表都有對應 rbac_* 函數，任何新查詢都知道要帶 RBAC。
+    # ── SCOPED 角色的 scope 处理（v5 新增）──
+    # scope 结构: {"line": [...], "biz_block": [...], "sub_line": [...], ...}
+    # 作为永久 WHERE 附加到所有查询，UI filter 在 scope 内进一步收敛。
+    scope = scope or {}
+    s_line     = scope.get("line")       or None
+    s_sub_line = scope.get("sub_line")   or None
+    s_bblock   = scope.get("biz_block")  or None
+    s_gl1      = scope.get("group_l1")   or None
+    s_gadv     = scope.get("group_advisor") or None
+    s_biztype  = scope.get("biz_type")   or None
+
+    # ── RBAC (v5) ──
+    # 统一口径 + 修复 P1/P2/P3:
+    #   ADMIN    → 1=1
+    #   MANAGER  → fact_signing/refund 直接 secondary_group_advisor 列；
+    #              fact_receipt/fund 无该列 → contract_no IN (SELECT ...)
+    #   ADVISOR  → actual_advisor（四张表都有此列）
+    #   SCOPED   → scope 谓词（line / biz_block 等），经 contract_no 回溯
+    def _scope_sign(alias):
+        """SCOPED: fact_signing / fact_refund 谓词（两张表同构）"""
+        parts = []
+        if s_line:     parts.append(f"{alias}.line = ANY(:scope_line)")
+        if s_sub_line: parts.append(f"{alias}.sub_line = ANY(:scope_sub_line)")
+        if s_bblock:
+            parts.append(f"{alias}.secondary_group_advisor IN "
+                         f"(SELECT secondary_group FROM dim_group_dept WHERE biz_block = ANY(:scope_bblock))")
+        if s_gl1:
+            parts.append(f"{alias}.secondary_group_advisor IN "
+                         f"(SELECT secondary_group FROM dim_group_dept WHERE primary_group = ANY(:scope_gl1))")
+        if s_gadv:
+            parts.append(f"{alias}.secondary_group_advisor = ANY(:scope_gadv)")
+        if s_biztype:
+            col = "sign_biz_type" if alias == "fs" else "refund_biz_type"
+            parts.append(f"{alias}.{col} = ANY(:scope_biztype)")
+        return "(" + " AND ".join(parts) + ")" if parts else "1=1"
+
+    def _scope_via_contract(alias):
+        """SCOPED: fact_receipt / fact_fund_snapshot 谓词（经 contract_no 回溯）"""
+        sub = []
+        if s_line:     sub.append("line = ANY(:scope_line)")
+        if s_sub_line: sub.append("sub_line = ANY(:scope_sub_line)")
+        if s_bblock:
+            sub.append("secondary_group_advisor IN "
+                       "(SELECT secondary_group FROM dim_group_dept WHERE biz_block = ANY(:scope_bblock))")
+        if s_gl1:
+            sub.append("secondary_group_advisor IN "
+                       "(SELECT secondary_group FROM dim_group_dept WHERE primary_group = ANY(:scope_gl1))")
+        if s_gadv:
+            sub.append("secondary_group_advisor = ANY(:scope_gadv)")
+        if s_biztype:
+            sub.append("sign_biz_type = ANY(:scope_biztype)")
+        if not sub:
+            return "1=1"
+        return f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {' AND '.join(sub)})"
+
     def rbac_sign(alias="fs"):
         if role == "ADMIN": return "1=1"
+        if role == "SCOPED": return _scope_sign(alias)
         if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group_advisor = :dept_scope"
         if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
+
     def rbac_receipt(alias="fr"):
         if role == "ADMIN": return "1=1"
-        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group_advisor = :dept_scope"
+        if role == "SCOPED": return _scope_via_contract(alias)
+        if role == "MANAGER" and dept_scope:
+            # [Fix P1] fact_receipt 无 secondary_group_advisor 列 → 回溯 fact_signing
+            return (f"{alias}.contract_no IN "
+                    f"(SELECT contract_no FROM fact_signing WHERE secondary_group_advisor = :dept_scope)")
         if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
+
     def rbac_fund(alias="fs"):
         if role == "ADMIN": return "1=1"
-        if role == "MANAGER" and dept_scope: return f"{alias}.secondary_group_advisor = :dept_scope"
+        if role == "SCOPED": return _scope_via_contract(alias)
+        if role == "MANAGER" and dept_scope:
+            # [Fix P2] fact_fund_snapshot 无 secondary_group_advisor 列 → 回溯 fact_signing
+            return (f"{alias}.contract_no IN "
+                    f"(SELECT contract_no FROM fact_signing WHERE secondary_group_advisor = :dept_scope)")
         if role == "ADVISOR" and advisor_name: return f"{alias}.actual_advisor = :advisor_name"
         return "1=1"
 
@@ -158,6 +219,33 @@ async def build_daily_report(
         target_groups.extend(line_groups)
     target_groups = list(set(target_groups)) if target_groups else []
 
+    # ── SCOPED: scope 也要约束 target 求和（v5 新增）──
+    scope_target_groups = []
+    if role == "SCOPED":
+        if s_bblock:
+            rows = (await db.execute(text(
+                "SELECT secondary_group FROM dim_group_dept WHERE biz_block = ANY(:bb)"
+            ), {"bb": s_bblock})).scalars().all()
+            scope_target_groups.extend(rows)
+        if s_gl1:
+            rows = (await db.execute(text(
+                "SELECT secondary_group FROM dim_group_dept WHERE primary_group = ANY(:gl1)"
+            ), {"gl1": s_gl1})).scalars().all()
+            scope_target_groups.extend(rows)
+        if s_gadv:
+            scope_target_groups.extend(s_gadv)
+        if s_line or s_sub_line:
+            line_clauses = []
+            if s_line:     line_clauses.append("line = ANY(:sl)")
+            if s_sub_line: line_clauses.append("sub_line = ANY(:ssl)")
+            rows = (await db.execute(text(f"""
+                SELECT DISTINCT secondary_group FROM fact_signing
+                WHERE sign_date BETWEEN :fy_start AND :today AND {' AND '.join(line_clauses)}
+            """), {"fy_start": fy_start, "today": today,
+                   "sl": s_line or [], "ssl": s_sub_line or []})).scalars().all()
+            scope_target_groups.extend(rows)
+        scope_target_groups = list(set(scope_target_groups))
+
     # ── 用户筛选函数 ──
     def ufilter_sign(alias="fs"):
         clauses = []
@@ -182,22 +270,20 @@ async def build_daily_report(
         return " AND ".join(clauses) if clauses else "1=1"
 
     def ufilter_receipt(alias="fr"):
-        # v4.3: 作废收据永久剔除（本表 status 字段本地过滤，O(1)）
-        # IS DISTINCT FROM 处理 NULL 情况：NULL!='作废' 为 UNKNOWN，
-        # 而 NULL IS DISTINCT FROM '作废' 为 TRUE，语义更安全。
+        # v4.3: 作废收据永久剔除
         clauses = [f"{alias}.status IS DISTINCT FROM '作废'"]
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
-        if adv_group_all:   clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
-        # v4.3 新增：line / sub_line 经 contract_no → fact_signing 子查询下推
+        # [Fix P3] fact_receipt 无 secondary_group_advisor → contract_no 回溯
+        if adv_group_all:
+            clauses.append(f"{alias}.contract_no IN "
+                           f"(SELECT contract_no FROM fact_signing WHERE secondary_group_advisor = ANY(:filter_group_adv_all))")
         if filter_line:
             clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE line = ANY(:filter_line))")
         if filter_sub_line:
             clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE sub_line = ANY(:filter_sub_line))")
-        # v4.3 新增：group_sys 也走 contract_no 子查询（fact_receipt 无 secondary_group 列）
         if filter_group_sys:
             clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE secondary_group = ANY(:filter_group_sys))")
-        # v4.3 新增：business type 直接对本表 sign_biz_type 过滤（migration 06 已加列，默认'留学'）
         if filter_biz_type: clauses.append(f"{alias}.sign_biz_type = ANY(:filter_biz_type)")
         return " AND ".join(clauses)
 
@@ -207,8 +293,6 @@ async def build_daily_report(
         if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
         if adv_group_all:    clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
-        # v4.3 新增：fact_fund_snapshot 无 line/sub_line/sign_biz_type，
-        #          全部经 contract_no → fact_signing 子查询下推
         if filter_line:
             clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE line = ANY(:filter_line))")
         if filter_sub_line:
@@ -235,6 +319,13 @@ async def build_daily_report(
         "filter_group_adv_all": adv_group_all or [],
         "filter_biz_type": filter_biz_type or [],
         "target_groups": target_groups or [],
+        # SCOPED 参数绑定
+        "scope_line":     s_line or [],
+        "scope_sub_line": s_sub_line or [],
+        "scope_bblock":   s_bblock or [],
+        "scope_gl1":      s_gl1 or [],
+        "scope_gadv":     s_gadv or [],
+        "scope_biztype":  s_biztype or [],
     }
 
     r_rbac = rbac_receipt()
@@ -298,25 +389,48 @@ async def build_daily_report(
         SELECT s.*, r.* FROM sign_agg s, refund_agg r
     """), params)).mappings().one()
 
-    # ── 目标（根据筛选条件联动）──
-    target_where = ""
-    if target_groups:
+    # ── 目标查询（v5: biz_type 联动 + SCOPED 约束）──
+    # 1. 组装 target_groups: SCOPED 下自动套 scope 限制
+    if role == "SCOPED":
+        if target_groups and scope_target_groups:
+            effective_tg = [g for g in target_groups if g in scope_target_groups]
+        elif target_groups:
+            effective_tg = target_groups
+        else:
+            effective_tg = scope_target_groups
+    else:
+        effective_tg = target_groups
+    if effective_tg:
+        params["target_groups"] = effective_tg
         target_where = " AND secondary_group = ANY(:target_groups)"
-    elif filter_depts:
+    elif filter_depts and role != "SCOPED":
         target_where = " AND secondary_group = ANY(:filter_depts)"
+    else:
+        target_where = ""
+
+    # 2. biz_type 联动（migration 07 新增 sign_biz_type 列）
+    if filter_biz_type:
+        target_where += " AND sign_biz_type = ANY(:filter_biz_type)"
+    elif role == "SCOPED" and s_biztype:
+        params["scope_biztype"] = s_biztype
+        target_where += " AND sign_biz_type = ANY(:scope_biztype)"
+
     cur_ym = today.strftime("%Y-%m")
-    monthly_target = float((await db.execute(text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month=:ym{target_where}"), params | {"ym": cur_ym})).scalar() or 0) or None
+    monthly_target = float((await db.execute(
+        text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month=:ym{target_where}"),
+        params | {"ym": cur_ym})).scalar() or 0) or None
+
     fy_months = []
     d = fy_start
     while d <= today:
         fy_months.append(d.strftime("%Y-%m"))
         d = d.replace(year=d.year+1, month=1) if d.month == 12 else d.replace(month=d.month+1)
-    fy_target = float((await db.execute(text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month = ANY(:months){target_where}"), params | {"months": fy_months})).scalar() or 0) or None
+    fy_target = float((await db.execute(
+        text(f"SELECT COALESCE(SUM(target_amount),0) FROM dim_monthly_target WHERE year_month = ANY(:months){target_where}"),
+        params | {"months": fy_months})).scalar() or 0) or None
 
     # ══════════════════════════════════════════════════════════
     #  潛簽 / 顧問排行 / 百萬榜
-    #  RBAC 由 fund_rbac / s_rbac / rf_rbac / r_rbac 逐查詢下推，
-    #  不再依角色短路 — section 永遠出現，空數據時前端走 empty-state。
     # ══════════════════════════════════════════════════════════
 
     # ── 资金快照：用 secondary_group 替代 dept ──
@@ -388,8 +502,7 @@ async def build_daily_report(
         FROM gs FULL OUTER JOIN rf ON gs.adv = rf.adv ORDER BY net_sign DESC
     """), params)).mappings().all()
 
-    # ── 百萬顧問榜：pay / gs / fund 三表 JOIN key 統一用 actual_advisor ──
-    #    fund CTE 也套 fund_rbac，MANAGER dept_scope 生效
+    # ── 百萬顧問榜 ──
     million_rows = (await db.execute(text(f"""
         WITH pay AS (
             SELECT actual_advisor AS adv, SUM(amount)/10000.0 AS total_payment
@@ -435,14 +548,6 @@ async def build_daily_report(
     """), params)).mappings().all()
     all_group_sys = [{"value": r["secondary_group"], "parent": r["sub_line"]} for r in all_group_sys_rows]
 
-    # ── 顧問口徑維度 dropdown 來源 ──
-    # 關鍵：不再裸查 dim_group_dept（會漏掉 RBAC），而是從「用戶實際可見的
-    # fact_signing 數據」反推 secondary_group_advisor，再 JOIN dim 拿到
-    # biz_block / primary_group 映射。這樣:
-    #   ADMIN   → 看所有有簽約數據的分組
-    #   MANAGER → 自動收斂到自己 dept_scope 這一支（含回溯到的一級組/板塊）
-    #   ADVISOR → 只剩自己合同所屬的分組
-    # 與 all_group_sys 的行為完全對稱。
     dim_gd_rows = (await db.execute(text(f"""
         SELECT DISTINCT dgd.biz_block, dgd.primary_group, dgd.secondary_group
         FROM dim_group_dept dgd
@@ -476,7 +581,6 @@ async def build_daily_report(
     """), params)).mappings().all()
     all_advisors = [r["actual_advisor"] for r in all_advisors_rows]
 
-    # ADVISOR 角色：下拉清單只給自己（防止前端塞別人名字送出）
     is_advisor = (role == "ADVISOR")
     if is_advisor and advisor_name:
         all_advisors = [advisor_name]
@@ -519,7 +623,7 @@ async def build_daily_report(
             "execution_date": today.isoformat(), "fiscal_week_start": week_start.isoformat(),
             "fiscal_week_number": current_fw,
         },
-        "viewer": {                       # 前端 UI gating 用
+        "viewer": {
             "role": role,
             "advisor_name": advisor_name,
             "is_advisor": is_advisor,

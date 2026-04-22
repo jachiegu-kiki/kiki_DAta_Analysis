@@ -33,8 +33,8 @@ async def daily_report(
         db=db, today=today,
         role=current_user.role,
         dept_scope=current_user.department_scope,
-        # 關鍵：顧問名來自 users.yaml 的 advisor_name，不再是 username
         advisor_name=current_user.advisor_name if current_user.role == "ADVISOR" else None,
+        scope=current_user.scope if current_user.role == "SCOPED" else None,  # v3 新增
         filter_depts=_split(depts),
         filter_advisors=_split(advisors),
         filter_line=_split(filter_line),

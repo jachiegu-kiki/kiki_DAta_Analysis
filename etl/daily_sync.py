@@ -677,33 +677,54 @@ def _fix_excel_serial(val):
     return val
 
 def sync_dim_target():
-    """同步月度目标（§7.3）"""
+    """同步月度目标（§7.3 · v5 加 sign_biz_type 维度）
+    Excel【月更】净签目标.xlsx 的字段【留学/培训】 → fact_signing.sign_biz_type
+      - '留学' → '留学'
+      - '培训' / '多语' → '多语'
+      - 其他 / 空 → '留学'（默认）
+    """
     df = read_excel("sign_target")
     if df is None: return
     # ★ 先将 Excel 序列号(int)转为真实日期，再统一 to_datetime
     df["所属月份"] = df["所属月份"].apply(_fix_excel_serial)
     df["所属月份"] = pd.to_datetime(df["所属月份"], errors="coerce")
     df["超额目标（万）"] = pd.to_numeric(df["超额目标（万）"], errors="coerce").fillna(0)
+
+    def _map_biz_type(v):
+        s = cs(v)
+        if s in ("多语", "培训"):
+            return "多语"
+        return "留学"  # 其他值/空/'留学' 全部归默认
+
     recs = []
     for _, r in df.dropna(subset=["所属月份"]).iterrows():
         dept = cs(r.get("部门"))
         if not dept: continue
+        # 兼容欄位名（根據原始表頭）：'留学/培训' 為首選，兜底 '业务类型'
+        raw_bt = r.get("留学/培训")
+        if raw_bt is None or (isinstance(raw_bt, float) and pd.isna(raw_bt)):
+            raw_bt = r.get("业务类型")
         recs.append({
-            "year_month": r["所属月份"].strftime("%Y-%m"),
-            "department": dept,
+            "year_month":      r["所属月份"].strftime("%Y-%m"),
+            "department":      dept,
             "secondary_group": cs(r.get("二级分组部门"), "全部") or "全部",
-            "target_amount": float(r["超额目标（万）"]),
+            "sign_biz_type":   _map_biz_type(raw_bt),
+            "target_amount":   float(r["超额目标（万）"]),
         })
     with get_engine().begin() as conn:
         for rec in recs:
             conn.execute(text("""
-                INSERT INTO dim_monthly_target (year_month,department,secondary_group,target_amount)
-                VALUES (:year_month,:department,:secondary_group,:target_amount)
-                ON CONFLICT (year_month,secondary_group) DO UPDATE SET
-                  target_amount=EXCLUDED.target_amount, department=EXCLUDED.department, updated_at=NOW()
+                INSERT INTO dim_monthly_target
+                  (year_month,department,secondary_group,sign_biz_type,target_amount)
+                VALUES
+                  (:year_month,:department,:secondary_group,:sign_biz_type,:target_amount)
+                ON CONFLICT (year_month,secondary_group,sign_biz_type) DO UPDATE SET
+                  target_amount=EXCLUDED.target_amount,
+                  department=EXCLUDED.department,
+                  updated_at=NOW()
             """), rec)
     stats["dim_monthly_target"] = len(recs)
-    print(f"  ✓ {len(recs)} 条目标")
+    print(f"  ✓ {len(recs)} 条目标（含 sign_biz_type 维度）")
 
 def sync_dim_contract_group():
     """同步合同分组（双口径：系统口径 + 顾问口径）"""

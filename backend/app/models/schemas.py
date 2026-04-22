@@ -158,7 +158,15 @@ class TargetSyncRecord(BaseModel):
     year_month:      constr(pattern=r"^\d{4}-\d{2}$")  # 强制 YYYY-MM 格式
     department:      constr(min_length=1)
     secondary_group: str = "全部"
+    sign_biz_type:   str = "留学"      # v5: 新增，与 fact_signing.sign_biz_type 对齐
     target_amount:   float
+
+    @field_validator("sign_biz_type")
+    @classmethod
+    def validate_biz_type(cls, v):
+        if v not in ("留学", "多语"):
+            raise ValueError("sign_biz_type 必须为 '留学' 或 '多语'")
+        return v
 
     @field_validator("target_amount")
     @classmethod

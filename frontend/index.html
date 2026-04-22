@@ -556,11 +556,23 @@ function bdg(t, c) { return '<span class="bdg ' + c + '">' + t + '</span>'; }
 function hash(s) { var h=0; for(var i=0;i<s.length;i++) h=(h*31+s.charCodeAt(i))&0xffff; return h.toString(16); }
 
 function pgHTML(val, target, timeP) {
-  if (!target) return '';
+  // v4.4 修復：篩選後查不到目標 → 顯示 0 軌道而非整條消失。
+  //   target === undefined → 該 KPI 本身無目標概念（日/週），不畫；
+  //   target === null / 0 / NaN → 顯示空軌道「目标 0万 / —」，表明「已查询但无数据」；
+  //   target > 0 → 正常進度條。
+  if (target === undefined) return '';
+  var tp = Math.min(Math.max(timeP || 0, 0), 100);
+  var hasTarget = (target != null) && !isNaN(target) && target > 0;
+  if (!hasTarget) {
+    return '<div class="pg"><div class="pg-hd"><span>目标 0万</span>'
+      + '<span style="color:var(--t3);font-weight:600">—</span></div>'
+      + '<div class="pg-track">'
+      + '<div class="pg-marker" style="left:'+tp+'%" title="时间进度 '+N(tp)+'%"></div>'
+      + '</div></div>';
+  }
   var pct = Math.min(val / target * 100, 100);
   var bc = val / target >= 1 ? 'hit' : 'miss';
   var pc = val / target >= 1 ? 'var(--grn)' : 'var(--org)';
-  var tp = Math.min(Math.max(timeP || 0, 0), 100);
   return '<div class="pg"><div class="pg-hd"><span>目标 ' + N(target) + '万</span>'
     + '<span style="color:'+pc+';font-weight:600">' + N(val/target*100) + '%</span></div>'
     + '<div class="pg-track"><div class="pg-bar '+bc+'" style="width:'+pct+'%"></div>'

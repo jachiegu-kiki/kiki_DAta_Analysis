@@ -55,14 +55,16 @@ async def sync_monthly_target(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(_verify_key),
 ):
+    # v5: UPSERT 冲突键从 (year_month, secondary_group) 改为
+    # (year_month, secondary_group, sign_biz_type)，对齐 migration 07。
     upserted = 0
     for rec in records:
         await db.execute(text("""
             INSERT INTO dim_monthly_target
-                (year_month, department, secondary_group, target_amount, updated_at)
+                (year_month, department, secondary_group, sign_biz_type, target_amount, updated_at)
             VALUES
-                (:year_month, :department, :secondary_group, :target_amount, NOW())
-            ON CONFLICT (year_month, secondary_group) DO UPDATE SET
+                (:year_month, :department, :secondary_group, :sign_biz_type, :target_amount, NOW())
+            ON CONFLICT (year_month, secondary_group, sign_biz_type) DO UPDATE SET
                 target_amount = EXCLUDED.target_amount,
                 department    = EXCLUDED.department,
                 updated_at    = NOW()

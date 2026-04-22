@@ -299,9 +299,11 @@ function ddUpdateBtn(id) {
 
 function ddOnChange(id) {
   ddUpdateBtn(id);
-  // trigger cascade
-  if (id === 'f-line' || id === 'f-subline') cascadeLine();
-  if (id === 'f-block' || id === 'f-gl1') cascadeTeam();
+  // v4.3 修复：级联只能向下，下游触发时不能重建自己（否则刚勾的 checkbox 会被 innerHTML 清掉）
+  if (id === 'f-line')    { rebuildSubLine(); rebuildGsys(); }
+  if (id === 'f-subline') { rebuildGsys(); }
+  if (id === 'f-block')   { rebuildGl1(); rebuildGadv(); }
+  if (id === 'f-gl1')     { rebuildGadv(); }
 }
 
 function opts(arr) { return arr; }
@@ -375,18 +377,25 @@ function buildOptions() {
   ddSetItems('f-fw', fwArr);
 }
 
-/* ═══ 级联联动 ═══ */
-function cascadeLine() {
+/* ═══ 级联联动（v4.3：单向重建，避免重建自身清掉选中状态）═══ */
+function rebuildSubLine() {
+  // 当 f-line 变化时调用：按选中的条线过滤出可见的二级条线
   var selLines = ddGetSelected('f-line');
   var slAll = FO.sub_lines || [];
-  var gsAll = FO.group_sys || [];
   if (selLines.length > 0) {
     var lineSet = new Set(selLines);
     ddSetItems('f-subline', slAll.filter(function(o){ return lineSet.has(o.parent); }).map(function(o){return o.value;}));
   } else {
     ddSetItems('f-subline', slAll.map(function(o){return o.value;}));
   }
+}
+
+function rebuildGsys() {
+  // 当 f-line 或 f-subline 变化时调用：按当前选中联动 f-gsys 可选项
+  var selLines = ddGetSelected('f-line');
   var selSL = ddGetSelected('f-subline');
+  var slAll = FO.sub_lines || [];
+  var gsAll = FO.group_sys || [];
   if (selSL.length > 0) {
     var slSet = new Set(selSL);
     ddSetItems('f-gsys', gsAll.filter(function(o){ return slSet.has(o.parent); }).map(function(o){return o.value;}));
@@ -398,17 +407,27 @@ function cascadeLine() {
   }
 }
 
-function cascadeTeam() {
+// 保留旧名以兼容外部调用（如初始化）: 完整向下级联
+function cascadeLine() { rebuildSubLine(); rebuildGsys(); }
+
+function rebuildGl1() {
+  // 当 f-block 变化时调用：按选中的板块过滤出可见的一级组
   var selBlocks = ddGetSelected('f-block');
   var l1All = FO.group_l1 || [];
-  var gaAll = FO.group_advisor || [];
   if (selBlocks.length > 0) {
     var bSet = new Set(selBlocks);
     ddSetItems('f-gl1', l1All.filter(function(o){ return bSet.has(o.parent); }).map(function(o){return o.value;}));
   } else {
     ddSetItems('f-gl1', l1All.map(function(o){return o.value;}));
   }
+}
+
+function rebuildGadv() {
+  // 当 f-block 或 f-gl1 变化时调用：按当前选中联动 f-gadv 可选项
+  var selBlocks = ddGetSelected('f-block');
   var selL1 = ddGetSelected('f-gl1');
+  var l1All = FO.group_l1 || [];
+  var gaAll = FO.group_advisor || [];
   if (selL1.length > 0) {
     var l1Set = new Set(selL1);
     ddSetItems('f-gadv', gaAll.filter(function(o){ return l1Set.has(o.parent); }).map(function(o){return o.value;}));
@@ -419,6 +438,9 @@ function cascadeTeam() {
     ddSetItems('f-gadv', gaAll.map(function(o){return o.value;}));
   }
 }
+
+// 保留旧名以兼容外部调用: 完整向下级联
+function cascadeTeam() { rebuildGl1(); rebuildGadv(); }
 
 /* ═══ 时间筛选 → 计算 execution_date ═══ */
 function computeExecDate() {

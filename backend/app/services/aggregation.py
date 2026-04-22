@@ -1,6 +1,6 @@
 # backend/app/services/aggregation.py
 """
-聚合服务 v4.2:
+聚合服务 v4.3:
   - 双口径分组（系统口径 / 顾问口径）
   - 级联筛选器（按条线 / 按团队）+ 业务类型筛选
   - 顾问排行使用 actual_advisor
@@ -10,6 +10,14 @@
     MANAGER 全部统一为 secondary_group_advisor 顾问口径
   - dim_gd_rows 改为从用户可见数据反推，使 biz_block / group_l1 /
     group_advisor 三个 dropdown 都受 dept_scope 约束
+
+v4.3 变更（基于第一性原理）：
+  收据/快照本身不带「条线」维度，该维度只存在于 fact_signing —
+  因此 line/sub_line 必须经 contract_no → fact_signing 子查询下推。
+  1) ufilter_receipt：硬性剔除 status='作废'（本表状态字段本地过滤最便宜）；
+     新增 line/sub_line 经 contract_no 子查询、sign_biz_type 本表直接过滤。
+  2) ufilter_fund：新增 line/sub_line/sign_biz_type 经 contract_no 子查询下推。
+  → 条线联动 / 作废剔除 / 多语归零，一次对齐。无 schema 变更，无前端变更。
 """
 from datetime import date, timedelta
 from typing import Optional, List
@@ -174,11 +182,24 @@ async def build_daily_report(
         return " AND ".join(clauses) if clauses else "1=1"
 
     def ufilter_receipt(alias="fr"):
-        clauses = []
+        # v4.3: 作废收据永久剔除（本表 status 字段本地过滤，O(1)）
+        # IS DISTINCT FROM 处理 NULL 情况：NULL!='作废' 为 UNKNOWN，
+        # 而 NULL IS DISTINCT FROM '作废' 为 TRUE，语义更安全。
+        clauses = [f"{alias}.status IS DISTINCT FROM '作废'"]
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
-        if adv_group_all:    clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
-        return " AND ".join(clauses) if clauses else "1=1"
+        if adv_group_all:   clauses.append(f"{alias}.secondary_group_advisor = ANY(:filter_group_adv_all)")
+        # v4.3 新增：line / sub_line 经 contract_no → fact_signing 子查询下推
+        if filter_line:
+            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE line = ANY(:filter_line))")
+        if filter_sub_line:
+            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE sub_line = ANY(:filter_sub_line))")
+        # v4.3 新增：group_sys 也走 contract_no 子查询（fact_receipt 无 secondary_group 列）
+        if filter_group_sys:
+            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE secondary_group = ANY(:filter_group_sys))")
+        # v4.3 新增：business type 直接对本表 sign_biz_type 过滤（migration 06 已加列，默认'留学'）
+        if filter_biz_type: clauses.append(f"{alias}.sign_biz_type = ANY(:filter_biz_type)")
+        return " AND ".join(clauses)
 
     def ufilter_fund(alias="fs"):
         clauses = []
@@ -186,6 +207,14 @@ async def build_daily_report(
         if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
         if adv_group_all:    clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
+        # v4.3 新增：fact_fund_snapshot 无 line/sub_line/sign_biz_type，
+        #          全部经 contract_no → fact_signing 子查询下推
+        if filter_line:
+            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE line = ANY(:filter_line))")
+        if filter_sub_line:
+            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE sub_line = ANY(:filter_sub_line))")
+        if filter_biz_type:
+            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE sign_biz_type = ANY(:filter_biz_type))")
         return " AND ".join(clauses) if clauses else "1=1"
 
     params = {

@@ -1,4 +1,19 @@
-version: "3.9"
+# ─── 廣州前途財務日報系統 · Docker Compose ────────────────────
+# Version: 4.0  (2026-04)
+#
+# v4 變更:
+#   ✅ 移除 POSTGRES_PASSWORD / SECRET_KEY / INTERNAL_API_KEY 的可猜默認值
+#      改用 ${VAR:?message} 語法，若 .env 缺失會啟動失敗並給出明確錯誤
+#   ✅ postgres 仍對 0.0.0.0 開放（給 8.219.219.57 連接），請確保：
+#      (1) 雲安全組入站規則只允許 8.219.219.57/32 進 5432
+#      (2) POSTGRES_PASSWORD 為強密碼
+#
+# 已知風險（未處理，可改 functionality 時再治理）:
+#   ⚠ api 容器掛載 /var/run/docker.sock 以供 ETL 觸發按鈕
+#     → 容器內拿到 sock 等同宿主機 root 權限
+#     → 遷移方案: 用 systemd timer 跑 ETL，或 docker-socket-proxy
+# ─────────────────────────────────────────────────────────────────
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -7,11 +22,13 @@ services:
     environment:
       POSTGRES_DB: qiantu_finance
       POSTGRES_USER: qiantu
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-qiantu2026}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
     volumes:
       - pg_data:/var/lib/postgresql/data
       - ./database/01_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
     ports:
+      # 對外開放 5432 給其他雲服務器（8.219.219.57）連接
+      # 安全依賴：雲安全組白名單 + POSTGRES_PASSWORD 強度
       - "0.0.0.0:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U qiantu -d qiantu_finance"]
@@ -27,9 +44,8 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     environment:
-      DATABASE_URL: postgresql+asyncpg://qiantu:${POSTGRES_PASSWORD:-qiantu2026}@postgres:5432/qiantu_finance
-      SECRET_KEY: ${SECRET_KEY:-CHANGE_ME_IN_PRODUCTION}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-CHANGE_ME_INTERNAL}
+      DATABASE_URL: postgresql+asyncpg://qiantu:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@postgres:5432/qiantu_finance
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?请在 .env 设置 INTERNAL_API_KEY}
       DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
       DINGTALK_SECRET: ${DINGTALK_SECRET:-}
       # ── ETL 触发：宿主机上本项目的绝对路径 ──
@@ -37,13 +53,13 @@ services:
     expose: ["8000"]
     volumes:
       - ./backend/app:/app/app:ro
-      # ── ETL 触发所需 ──
+      # ── ETL 触发所需（跨容器執行 docker compose run etl）──
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
-      # compose v2 插件（宿主机路径可能不同，见下方注释）
+      # compose v2 插件
       - /usr/libexec/docker/cli-plugins:/usr/libexec/docker/cli-plugins:ro
-      # 关键：把项目挂载到容器内与宿主机完全相同的路径
-      # 这样 compose CLI 读到的相对路径（./etl, ./backend 等）被 daemon 正确 resolve
+      # 把项目挂载到容器内与宿主机完全相同的路径
+      # 這樣 compose CLI 讀到的相对路径（./etl 等）被 daemon 正确 resolve
       - ${PROJECT_HOST_DIR:-/opt/qiantu-finance-v4}:${PROJECT_HOST_DIR:-/opt/qiantu-finance-v4}:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -70,7 +86,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     environment:
-      DATABASE_URL_SYNC: postgresql://qiantu:${POSTGRES_PASSWORD:-qiantu2026}@postgres:5432/qiantu_finance
+      DATABASE_URL_SYNC: postgresql://qiantu:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@postgres:5432/qiantu_finance
       PREDATA_DIR: /data/PreData
       PULLDATA_DIR: /data/PullData
       PYTHONUNBUFFERED: "1"

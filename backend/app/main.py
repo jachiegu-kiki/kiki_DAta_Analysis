@@ -1,32 +1,37 @@
 # backend/app/main.py
 """
-廣州前途財務日報系統 · FastAPI 後端入口（整合版 v2）
+廣州前途財務日報系統 · FastAPI 後端入口（v3 精簡版）
 ────────────────────────────────────────────────────────────────
-變更：
-  ✗ 移除 auth router（/api/v1/auth/login）— 認證交給 Gateway
-  ✓ 保留內網 ingest/sync/qa router（n8n 用 X-API-Key，不走 SSO）
-  ✓ 新增 /api/v1/me — 回傳當前用戶（從 X-Auth-* header 解析）
+v3 變更:
+  ✗ 刪除 Base.metadata.create_all() — 全部用 raw SQL，沒有 ORM model
+  ✗ 刪除 engine.dispose() — FastAPI 在結束時會自行釋放
+  ✓ 保留 lifespan 作為未來擴充點（但目前是 no-op）
+
+v2 保留:
+  ✗ 移除 auth router — 認證交給 Gateway
+  ✓ 內網 ingest/sync/qa router（n8n 用 X-API-Key）
+  ✓ /api/v1/me — 從 X-Auth-* header 解析當前用戶
 """
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from app.core.database import engine, Base
+from app.core.database import engine
 from app.core.security import get_current_user, AuthUser
 from app.api import dashboard, ingest, sync, qa, etl_trigger
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    # Schema 由 docker-entrypoint-initdb.d/01_schema.sql 初始化
+    # 這裡只是 lifecycle hook，不再執行 create_all（我們用 raw SQL）
     yield
     await engine.dispose()
 
 
 app = FastAPI(
     title="廣州前途財務日報 API",
-    version="2.0.0",
+    version="3.0.0",
     lifespan=lifespan,
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -41,7 +46,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 路由註冊（/api/v1/auth 已刪除）
+# 路由註冊
 app.include_router(dashboard.router,   prefix="/api/v1/dashboard",    tags=["日報看板"])
 app.include_router(ingest.router,      prefix="/api/internal/ingest", tags=["數據攝入"])
 app.include_router(sync.router,        prefix="/api/internal/sync",   tags=["維度同步"])

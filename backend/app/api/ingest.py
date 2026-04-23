@@ -14,7 +14,7 @@ from app.models.schemas import (
     IngestSigningPayload, IngestRefundPayload,
     IngestReceiptPayload, IngestFundSnapshotPayload,
 )
-from app.services.alerting import alert_ingest_error, alert_workflow_success
+from app.services.alerting import alert_ingest_error
 
 router = APIRouter()
 

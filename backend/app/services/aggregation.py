@@ -122,8 +122,12 @@ async def build_daily_report(
     #              fact_receipt/fund 无该列 → contract_no IN (SELECT ...)
     #   ADVISOR  → actual_advisor（四张表都有此列）
     #   SCOPED   → scope 谓词（line / biz_block 等），经 contract_no 回溯
+    #
+    # v5.1 语义变更: SCOPED 的多维度取【联集】（OR），不是交集（AND）。
+    # 例: line=[欧洲,亚洲], biz_block=[欧亚,外包]
+    #     → 命中任一维度即放行（line ∈ 欧洲/亚洲  OR  biz_block ∈ 欧亚/外包）
     def _scope_sign(alias):
-        """SCOPED: fact_signing / fact_refund 谓词（两张表同构）"""
+        """SCOPED: fact_signing / fact_refund 谓词（两张表同构，维度间 OR）"""
         parts = []
         if s_line:     parts.append(f"{alias}.line = ANY(:scope_line)")
         if s_sub_line: parts.append(f"{alias}.sub_line = ANY(:scope_sub_line)")
@@ -138,10 +142,10 @@ async def build_daily_report(
         if s_biztype:
             col = "sign_biz_type" if alias == "fs" else "refund_biz_type"
             parts.append(f"{alias}.{col} = ANY(:scope_biztype)")
-        return "(" + " AND ".join(parts) + ")" if parts else "1=1"
+        return "(" + " OR ".join(parts) + ")" if parts else "1=1"
 
     def _scope_via_contract(alias):
-        """SCOPED: fact_receipt / fact_fund_snapshot 谓词（经 contract_no 回溯）"""
+        """SCOPED: fact_receipt / fact_fund_snapshot 谓词（经 contract_no 回溯，维度间 OR）"""
         sub = []
         if s_line:     sub.append("line = ANY(:scope_line)")
         if s_sub_line: sub.append("sub_line = ANY(:scope_sub_line)")
@@ -157,7 +161,7 @@ async def build_daily_report(
             sub.append("sign_biz_type = ANY(:scope_biztype)")
         if not sub:
             return "1=1"
-        return f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {' AND '.join(sub)})"
+        return f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {' OR '.join(sub)})"
 
     def rbac_sign(alias="fs"):
         if role == "ADMIN": return "1=1"

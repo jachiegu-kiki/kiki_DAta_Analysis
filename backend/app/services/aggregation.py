@@ -144,8 +144,8 @@ async def build_daily_report(
             parts.append(f"{alias}.{col} = ANY(:scope_biztype)")
         return "(" + " OR ".join(parts) + ")" if parts else "1=1"
 
-    def _scope_via_contract(alias):
-        """SCOPED: fact_receipt / fact_fund_snapshot 谓词（经 contract_no 回溯，维度间 OR）"""
+    def _scope_sub_where():
+        """SCOPED: 產生要套在 fact_signing 子查詢 WHERE 裡的謂詞（多維 OR）。"""
         sub = []
         if s_line:     sub.append("line = ANY(:scope_line)")
         if s_sub_line: sub.append("sub_line = ANY(:scope_sub_line)")
@@ -159,9 +159,27 @@ async def build_daily_report(
             sub.append("secondary_group_advisor = ANY(:scope_gadv)")
         if s_biztype:
             sub.append("sign_biz_type = ANY(:scope_biztype)")
-        if not sub:
+        return " OR ".join(sub) if sub else ""
+
+    def _scope_receipt(alias):
+        """SCOPED fact_receipt 谓词: 无 secondary_group 列，仅用 contract_no 回溯。
+        收据合同几乎必有 fact_signing 对应记录，不做 group fallback。
+        """
+        joined = _scope_sub_where()
+        if not joined:
             return "1=1"
-        return f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {' OR '.join(sub)})"
+        return f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {joined})"
+
+    def _scope_fund(alias):
+        """SCOPED fact_fund_snapshot 谓词: 有 secondary_group 列，用合同级 OR 组别级 fallback
+        处理尚未进 fact_signing 的潜在合同。
+        """
+        joined = _scope_sub_where()
+        if not joined:
+            return "1=1"
+        return (f"({alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {joined})"
+                f" OR {alias}.secondary_group IN "
+                f"(SELECT DISTINCT secondary_group FROM fact_signing WHERE {joined}))")
 
     def rbac_sign(alias="fs"):
         if role == "ADMIN": return "1=1"
@@ -172,7 +190,7 @@ async def build_daily_report(
 
     def rbac_receipt(alias="fr"):
         if role == "ADMIN": return "1=1"
-        if role == "SCOPED": return _scope_via_contract(alias)
+        if role == "SCOPED": return _scope_receipt(alias)
         if role == "MANAGER" and dept_scope:
             # [Fix P1] fact_receipt 无 secondary_group_advisor 列 → 回溯 fact_signing
             return (f"{alias}.contract_no IN "
@@ -182,7 +200,7 @@ async def build_daily_report(
 
     def rbac_fund(alias="fs"):
         if role == "ADMIN": return "1=1"
-        if role == "SCOPED": return _scope_via_contract(alias)
+        if role == "SCOPED": return _scope_fund(alias)
         if role == "MANAGER" and dept_scope:
             # [Fix P2] fact_fund_snapshot 无 secondary_group_advisor 列 → 回溯 fact_signing
             return (f"{alias}.contract_no IN "
@@ -204,12 +222,14 @@ async def build_daily_report(
 
     adv_group_all = list(filter_group_advisor or []) + resolved_group_adv_from_dim
 
-    # ── 目标联动：解析筛选条件 → secondary_group 列表 ──
-    target_groups = []
+    # ── 目标联动：解析筛选条件 → secondary_group 列表（v5.3: 多维度取交集）──
+    # 原逻辑 extend 各维度结果是「联集」，与 fact 表 AND 语义不符。
+    # 修正: 每个维度独立产生候选集，最后取交集（各维度都有命中才算）。
+    target_group_sets = []   # list of set[str]
     if filter_group_sys:
-        target_groups.extend(filter_group_sys)
+        target_group_sets.append(set(filter_group_sys))
     if adv_group_all:
-        target_groups.extend(adv_group_all)
+        target_group_sets.append(set(adv_group_all))
     if filter_line or filter_sub_line:
         line_clauses = []
         if filter_line: line_clauses.append("line = ANY(:filter_line)")
@@ -220,8 +240,15 @@ async def build_daily_report(
             WHERE sign_date BETWEEN :fy_start AND :today AND {line_where}
         """), {"fy_start": fy_start, "today": today,
                "filter_line": filter_line or [], "filter_sub_line": filter_sub_line or []})).scalars().all()
-        target_groups.extend(line_groups)
-    target_groups = list(set(target_groups)) if target_groups else []
+        target_group_sets.append(set(line_groups))
+    # filter_depts 也加入（原 v4 只在 target_where fallback 用，改为与其他维度平权）
+    if filter_depts:
+        target_group_sets.append(set(filter_depts))
+    # biz_type 不在此聚合 — 它是 sign_biz_type 列，另做 SUM 级别过滤
+    if target_group_sets:
+        target_groups = list(set.intersection(*target_group_sets))
+    else:
+        target_groups = []
 
     # ── SCOPED: scope 也要约束 target 求和（v5 新增）──
     scope_target_groups = []
@@ -292,17 +319,29 @@ async def build_daily_report(
         return " AND ".join(clauses)
 
     def ufilter_fund(alias="fs"):
+        # v5.2 語義修正：fact_fund_snapshot 裡的「潛在簽約」合同通常
+        # 還沒進 fact_signing（尚未成為已簽約），直接用
+        # contract_no ∈ fact_signing 子查詢會全過濾掉 → 潛簽面板空。
+        #
+        # 解法：對 line / sub_line / biz_type 三個只存在於 fact_signing
+        # 的維度，採用 **合同級 OR 組別級** 兩段 fallback：
+        #   (a) 合同直接有歷史簽約記錄 → 用合同自身的 line 判定
+        #   (b) 否則 → 用合同所在 secondary_group 歷史上出現過的 line
+        #       集合反查（相同組別的條線屬性沿用）
+        # 這使潛在合同能繼承同組別的條線/類別屬性。
+        def _line_pred(col, param):
+            return (f"({alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE {col} = ANY(:{param}))"
+                    f" OR {alias}.secondary_group IN "
+                    f"(SELECT DISTINCT secondary_group FROM fact_signing WHERE {col} = ANY(:{param})))")
+
         clauses = []
         if filter_depts:    clauses.append(f"{alias}.dept = ANY(:filter_depts)")
         if filter_advisors: clauses.append(f"{alias}.actual_advisor = ANY(:filter_advisors)")
         if filter_group_sys: clauses.append(f"{alias}.secondary_group = ANY(:filter_group_sys)")
         if adv_group_all:    clauses.append(f"{alias}.secondary_group = ANY(:filter_group_adv_all)")
-        if filter_line:
-            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE line = ANY(:filter_line))")
-        if filter_sub_line:
-            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE sub_line = ANY(:filter_sub_line))")
-        if filter_biz_type:
-            clauses.append(f"{alias}.contract_no IN (SELECT contract_no FROM fact_signing WHERE sign_biz_type = ANY(:filter_biz_type))")
+        if filter_line:     clauses.append(_line_pred("line",          "filter_line"))
+        if filter_sub_line: clauses.append(_line_pred("sub_line",      "filter_sub_line"))
+        if filter_biz_type: clauses.append(_line_pred("sign_biz_type", "filter_biz_type"))
         return " AND ".join(clauses) if clauses else "1=1"
 
     params = {
@@ -394,7 +433,7 @@ async def build_daily_report(
     """), params)).mappings().one()
 
     # ── 目标查询（v5: biz_type 联动 + SCOPED 约束）──
-    # 1. 组装 target_groups: SCOPED 下自动套 scope 限制
+    # 1. 组装 target_groups: SCOPED 下自动套 scope 限制（交集）
     if role == "SCOPED":
         if target_groups and scope_target_groups:
             effective_tg = [g for g in target_groups if g in scope_target_groups]
@@ -407,8 +446,6 @@ async def build_daily_report(
     if effective_tg:
         params["target_groups"] = effective_tg
         target_where = " AND secondary_group = ANY(:target_groups)"
-    elif filter_depts and role != "SCOPED":
-        target_where = " AND secondary_group = ANY(:filter_depts)"
     else:
         target_where = ""
 
@@ -519,7 +556,7 @@ async def build_daily_report(
             SELECT fs.actual_advisor AS adv, SUM(fs.amount)/10000.0 AS unarchived_unconfirmed
             FROM fact_fund_snapshot fs
             WHERE fs.snapshot_date=(SELECT MAX(snapshot_date) FROM fact_fund_snapshot WHERE metric_type IN ('已收款未盖章','未认款'))
-              AND fs.actual_advisor!='' AND {fund_rbac}
+              AND fs.actual_advisor!='' AND {fund_rbac} AND {fund_uf}
             GROUP BY fs.actual_advisor
         )
         SELECT pay.adv AS name, ROUND(pay.total_payment,4) AS total_payment,

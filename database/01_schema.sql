@@ -1,10 +1,12 @@
 -- ============================================================
 -- 广州前途财务日报系统 · PostgreSQL 完整 Schema
--- Version: 2.0  (2026-04  · 整合 migration 02~06)
+-- Version: 2.1  (2026-04 · 整合 migration 02~07 · schema 部分)
 -- ============================================================
 -- 历史迁移已全部合并入本文件，新部署只需跑此一份。
--- 已有生产数据库若已套用 migration 02~06，可忽略本文件
--- （docker-entrypoint-initdb.d 只在 pg_data volume 为空时執行）。
+-- 已有生产数据库若已套用 migration 02~06 但未套 07，
+-- 必须手动执行 07_cleanup_and_schema_fix.sql 做数据清理 + schema 修正
+-- （docker-entrypoint-initdb.d 只在 pg_data volume 为空时執行，
+--   对已存在的生产库无效）。
 --
 -- 已整合的历史 migration：
 --   02_migrate_receipt_updated_at.sql        → fact_receipt.updated_at
@@ -12,6 +14,11 @@
 --   04_migrate_group_dept_dual_caliber.sql   → dim_group_dept 表 + 顾问口径字段
 --   05_migrate_actual_advisor.sql            → actual_advisor 字段
 --   06_migrate_receipt_biz_type.sql          → fact_receipt.sign_biz_type
+--   07_cleanup_and_schema_fix.sql (schema 部分)
+--     → dim_monthly_target.sign_biz_type 列 + CHECK 约束
+--     → dim_monthly_target UNIQUE 约束从二元组改为三元组
+--     → dim_monthly_target.department 允许空串（配合 ETL 从 dim_group_dept 反查）
+--     （07 的 DELETE/TRUNCATE 运行时数据清理部分不在此文件，保留在 07 手动执行）
 --
 -- 已移除：
 --   dim_users 表  — 认证交给 AccountSystem（users.yaml），此表不再使用
@@ -53,14 +60,20 @@ SELECT *,
 FROM dim_advisor;
 
 -- dim_monthly_target: 每月目标配置（来源：钉钉多维表格 Webhook 同步）
+-- migration 07 整合：
+--   - 新增 sign_biz_type 列（区分留学/多语目标）
+--   - UNIQUE 从二元组 (year_month, secondary_group) 改为三元组
+--   - department 允许空串（ETL 从 dim_group_dept 反查填充，Excel '部门' 列已废弃）
 CREATE TABLE IF NOT EXISTS dim_monthly_target (
     id              SERIAL       PRIMARY KEY,
-    year_month      VARCHAR(7)   NOT NULL,               -- 格式: 'YYYY-MM'
-    department      VARCHAR(64)  NOT NULL,
+    year_month      VARCHAR(7)   NOT NULL,                      -- 格式: 'YYYY-MM'
+    department      VARCHAR(64)  NOT NULL DEFAULT '',           -- migration 07：允许空串
     secondary_group VARCHAR(64)  NOT NULL DEFAULT '全部',
-    target_amount   DECIMAL(12,2) NOT NULL,              -- 超额目标（万元）
+    sign_biz_type   VARCHAR(16)  NOT NULL DEFAULT '留学'        -- migration 07
+                    CHECK (sign_biz_type IN ('留学','多语')),
+    target_amount   DECIMAL(12,2) NOT NULL,                     -- 超额目标（万元）
     updated_at      TIMESTAMPTZ  DEFAULT NOW(),
-    UNIQUE (year_month, secondary_group)
+    UNIQUE (year_month, secondary_group, sign_biz_type)         -- migration 07：三元组
 );
 CREATE INDEX IF NOT EXISTS idx_target_month ON dim_monthly_target(year_month);
 

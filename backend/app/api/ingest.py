@@ -2,6 +2,11 @@
 """
 数据摄入 API（供 n8n 内网调用）
 实现 Pydantic 防呆 + 幂等写入 + 钉钉告警
+
+v6 变更（2026-04-23）:
+  - ingest_receipt: 跳过 status='作废' 的记录（不写入 DB），
+    与 ETL daily_sync.py::snap_receipt 保持一致的过滤规则
+    （通过 HTTP 接口过来的作废数据也不会污染 fact_receipt）
 """
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -139,10 +144,19 @@ async def ingest_receipt(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(_verify_api_key),
 ):
-    inserted, skipped, failed = 0, 0, 0
+    """
+    v6: 收款数据写入时跳过 status='作废' 记录，与 ETL 保持一致。
+    若需删除已入库但当前变为作废的记录，请依赖 ETL daily_sync.py
+    的 delete_voided_receipts() 每日定时清理。
+    """
+    inserted, skipped, failed, voided = 0, 0, 0, 0
     errors = []
 
     for rec in payload.records:
+        # v6: 作废记录不写入
+        if rec.status == "作废":
+            voided += 1
+            continue
         try:
             result = await db.execute(text("""
                 INSERT INTO fact_receipt
@@ -166,7 +180,12 @@ async def ingest_receipt(
     if failed > 0:
         await alert_ingest_error(payload.source_tag, f"{failed} 条收款记录失败", "\n".join(errors[:5]))
 
-    return {"inserted": inserted, "skipped": skipped, "failed": failed}
+    return {
+        "inserted":       inserted,
+        "skipped":        skipped,
+        "voided_skipped": voided,   # v6 新增返回字段：作废记录被跳过的数量
+        "failed":         failed,
+    }
 
 
 # ─── 资金快照写入 ─────────────────────────────────────────────────────────

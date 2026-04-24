@@ -2,11 +2,45 @@
 """
 Pydantic v2 数据校验模型（防呆核心）
 严格对应 daily_report.json 结构 + 写入接口 Payload
+
+v6 变更（2026-04-23）:
+  - 新增 normalize_biz_type 工具函数：统一业务类型归一化
+    支持源表填 '培训' / '语培' / '多语' / '留学'，全部映射到 ('留学', '多语')
+  - SigningRecord / RefundRecord / ReceiptRecord / TargetSyncRecord 的
+    sign_biz_type / refund_biz_type 字段 validator 改为归一化模式，
+    不再直接拒绝，避免 API 上游因源表文字变更 422 拒收
+  - TargetSyncRecord.department 改为可选（默认空字符串），
+    因为 Excel '部门' 列已废弃，由 API 层从 dim_group_dept 反查填充
 """
 from pydantic import BaseModel, field_validator, model_validator, constr
 from datetime import date
 from typing import Optional, List
 import math
+
+
+def normalize_biz_type(v) -> str:
+    """[v6 新增] 业务类型归一化（Pydantic validator 公用）
+
+    源表/上游可能填:
+      - '多语' / '培训' / '语培'  → 统一映射为 '多语'
+      - '留学' / 空 / None        → 统一映射为 '留学'
+      - 其他未知值                → 默认 '留学'（保证入库不会 422）
+
+    此函数保持与 ETL（etl/daily_sync.py::normalize_biz_type）完全一致，
+    修改时请同步更新两处。
+
+    Returns:
+        str: 必为 '留学' 或 '多语'
+    """
+    if v is None:
+        return "留学"
+    s = str(v).strip()
+    if s in ("多语", "培训", "语培"):
+        return "多语"
+    if s in ("留学", ""):
+        return "留学"
+    # 未知值：不抛错，默认归"留学"（保证 API 入口稳健）
+    return "留学"
 
 
 # ─── 写入接口：签约数据 ─────────────────────────────────────────────────────
@@ -30,12 +64,11 @@ class SigningRecord(BaseModel):
             raise ValueError("gross_sign_amount 不可为 NaN 或 Inf，请检查原始数据")
         return round(v, 2)
 
-    @field_validator("sign_biz_type")
+    @field_validator("sign_biz_type", mode="before")
     @classmethod
-    def validate_biz_type(cls, v):
-        if v not in ("留学", "多语"):
-            raise ValueError(f"sign_biz_type 必须是 '留学' 或 '多语'，收到: {v}")
-        return v
+    def norm_biz_type(cls, v):
+        # v6: 改为归一化模式，支持 '培训'/'语培' 自动映射到 '多语'
+        return normalize_biz_type(v)
 
     @field_validator("school")
     @classmethod
@@ -71,6 +104,12 @@ class RefundRecord(BaseModel):
             raise ValueError("gross_refund 不可为 NaN 或 Inf")
         return round(v, 2)
 
+    @field_validator("refund_biz_type", mode="before")
+    @classmethod
+    def norm_biz_type(cls, v):
+        # v6: 归一化，与 SigningRecord 对齐
+        return normalize_biz_type(v)
+
 
 class IngestRefundPayload(BaseModel):
     records:    List[RefundRecord]
@@ -97,12 +136,11 @@ class ReceiptRecord(BaseModel):
             raise ValueError("amount 不可为 NaN 或 Inf")
         return round(v, 2)
 
-    @field_validator("sign_biz_type")
+    @field_validator("sign_biz_type", mode="before")
     @classmethod
-    def validate_biz_type(cls, v):
-        if v not in ("留学", "多语"):
-            raise ValueError("sign_biz_type 必须为 '留学' 或 '多语'")
-        return v
+    def norm_biz_type(cls, v):
+        # v6: 归一化，与 SigningRecord 对齐
+        return normalize_biz_type(v)
 
 
 class IngestReceiptPayload(BaseModel):
@@ -156,17 +194,17 @@ class AdvisorSyncRecord(BaseModel):
 # ─── 维度同步：月度目标 ─────────────────────────────────────────────────────
 class TargetSyncRecord(BaseModel):
     year_month:      constr(pattern=r"^\d{4}-\d{2}$")  # 强制 YYYY-MM 格式
-    department:      constr(min_length=1)
+    # v6: department 改为可选（源 Excel '部门' 列已废弃，API 层从 dim_group_dept 反查）
+    department:      str = ""
     secondary_group: str = "全部"
     sign_biz_type:   str = "留学"      # v5: 新增，与 fact_signing.sign_biz_type 对齐
     target_amount:   float
 
-    @field_validator("sign_biz_type")
+    @field_validator("sign_biz_type", mode="before")
     @classmethod
-    def validate_biz_type(cls, v):
-        if v not in ("留学", "多语"):
-            raise ValueError("sign_biz_type 必须为 '留学' 或 '多语'")
-        return v
+    def norm_biz_type(cls, v):
+        # v6: 归一化，支持上游传 '培训'/'语培' 自动映射
+        return normalize_biz_type(v)
 
     @field_validator("target_amount")
     @classmethod

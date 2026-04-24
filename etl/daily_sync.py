@@ -1,16 +1,24 @@
 """
-daily_sync.py v2 — 完整 ETL，严格遵循《数据逻辑说明 v3》
+daily_sync.py v6 — 完整 ETL
 ========================================================
-架构：
+本版修复（v6, 2026-04-23）:
+  [Fix-1] snap_receipt 跳过 status='作废' 记录 + 收集黑名单
+          新增 delete_voided_receipts() 从 DB 物理删除作废收据
+          （处理源表把正常收据改为作废的场景）
+  [Fix-2] sync_dim_target 全面重写：
+          - normalize_biz_type 增加 '语培' 识别（源表实际取值）
+          - 去掉对 Excel '部门' 列的强依赖（该列已废弃）
+          - department 字段改由 dim_group_dept 反查 secondary_group → primary_group 填充
+          - 未知 biz_type 值不静默归'留学'，打警告日志
+          - 整表 TRUNCATE 后全量重灌，避免历史错分类脏数据残留
+
+架构（不变）:
   1. 时间边界计算（第一/二章）
   2. 维度表加载（职员表/签约分组/历史分组/Sign_Details二级条线）
   3. 签约模块 A1~A3 B1~B3 C1 D（第四章）
   4. 退费模块 R1~R3（第四章+第八章）
   5. 快照模块：收款/已收款未盖章/潜在签约/未认款（第二章 §2.2）
   6. 维度同步：顾问/目标/合同分组
-
-每个模块一个函数，返回 list[dict]，互不依赖。
-修改任何模块只需改对应函数，不影响其他模块。
 
 环境变量：
   DATABASE_URL_SYNC   PostgreSQL 连接串
@@ -126,6 +134,32 @@ def cf(v):
 
 def sep(t): print(f"\n{'='*60}\n  {t}\n{'='*60}")
 
+def normalize_biz_type(v) -> str:
+    """[v6 新增] 统一业务类型归一化（项目全局唯一入口）
+
+    源表/上游 Excel/API 可能填 '培训' / '语培' / '多语' / '留学' 等，
+    数据库 schema 只允许 ('留学', '多语') 两值。
+    此函数负责把所有变体归一化到这两个值。
+
+    映射规则：
+      '多语' / '培训' / '语培'  →  '多语'
+      '留学' / 空                →  '留学'
+      其他未知值                 →  '留学' 并打警告日志
+
+    与 backend/app/models/schemas.py::normalize_biz_type 保持逻辑一致，
+    修改时请同步更新两处。
+
+    Returns:
+        str: 归一化后的业务类型，必为 '留学' 或 '多语'
+    """
+    s = cs(v)
+    if s in ("多语", "培训", "语培"):
+        return "多语"
+    if s in ("留学", ""):
+        return "留学"
+    print(f"  [警告] biz_type 列出现未知值: '{s}'，默认归为'留学'，请检查源数据")
+    return "留学"
+
 # ═══════════════════════════════════════════════════════════════
 # §2  时间边界（第一/二章）
 # ═══════════════════════════════════════════════════════════════
@@ -195,7 +229,7 @@ def load_sign_group():
         for _, r in df.dropna(subset=["合同号"]).iterrows():
             cn = cs(r["合同号"])
             m_sys[cn] = cs(r["分组部门"])
-            adv_dept = cs(r.get("分组部门（顾问口径）"))
+            adv_dept = cs(r.get("分组部门（顾问口径）")) or cs(r.get("分组部门(顾问口径)"))
             if adv_dept:
                 m_adv[cn] = adv_dept
             actual = cs(r.get("实际签约顾问"))
@@ -232,6 +266,29 @@ def load_subline_map():
                 sl = cs(r.get(sl_col))
                 if cn and sl: m[cn] = sl
     _dim_cache["subline"] = m
+    return m
+
+def load_group_to_primary():
+    """[v6 新增] 从 dim_group_dept 加载 secondary_group → primary_group 映射
+
+    用于 dim_monthly_target 同步时反查 department 字段
+    （源 Excel 的"部门"列已废弃，改为从此表自动推导）
+
+    Returns:
+        dict: {secondary_group_name: primary_group_name}
+    """
+    if "group_to_primary" in _dim_cache:
+        return _dim_cache["group_to_primary"]
+    m = {}
+    try:
+        with get_engine().connect() as conn:
+            rows = conn.execute(text(
+                "SELECT secondary_group, primary_group FROM dim_group_dept"
+            )).all()
+            m = {r[0]: (r[1] or "") for r in rows if r[0]}
+    except Exception as e:
+        print(f"  [警告] 读取 dim_group_dept 失败，department 字段将留空: {e}")
+    _dim_cache["group_to_primary"] = m
     return m
 
 def get_group(contract_no: str, advisor: str) -> str:
@@ -272,6 +329,8 @@ def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
               biz_type="留学", school="ERP", gross_sign=0, source="日更"):
     """统一构建签约记录"""
     cn = cs(contract_no)
+    # v6: biz_type 统一走归一化，保证 '语培'/'培训' 也能正确识别
+    biz_type = normalize_biz_type(biz_type)
     sg = "语培" if biz_type == "多语" else get_group(cn, advisor)
     sga = "语培" if biz_type == "多语" else get_group_advisor(cn, advisor)
     return {
@@ -451,6 +510,8 @@ def mod_D():
 # ═══════════════════════════════════════════════════════════════
 def _refund_rec(refund_id, refund_date, contract_no="", advisor="",
                 dept="", line="", biz_type="留学", gross_refund=0, source="日更"):
+    # v6: biz_type 统一走归一化，保证 '语培'/'培训' 也能正确识别
+    biz_type = normalize_biz_type(biz_type)
     sg = "语培" if biz_type == "多语" else get_group(contract_no, advisor)
     sga = "语培" if biz_type == "多语" else get_group_advisor(contract_no, advisor)
     return {
@@ -525,17 +586,27 @@ def mod_R3():
 # ═══════════════════════════════════════════════════════════════
 def snap_receipt():
     """收款统计：款项类别=留学服务费
+
     清洗规则:
       1. 跳过 contract_no 含 '-MHT-' 的记录（业务废弃/测试合同）
-      2. actual_advisor 优先用 dim_contract_group.actual_advisor（get_actual_advisor 封装）,
+      2. [v6 新增] 跳过 status='作废' 的记录，不写入库
+         同时收集作废记录的 receipt_no，返回供主流程从 DB 物理删除
+         （处理"源表里原本正常的收据被改为作废"的场景 —
+          只靠写入过滤不够，必须主动 DELETE）
+      3. actual_advisor 优先用 dim_contract_group.actual_advisor，
          回退 advisor_name — 与 fact_signing / fact_refund 口径保持一致
+
+    Returns:
+        tuple[list[dict], list[str]]: (可写入的收据记录列表, 作废的收据号列表)
     """
     df = read_excel("receipt")
-    if df is None: return []
+    if df is None: return [], []
     if "款项类别" in df.columns:
         df = df[df["款项类别"] == "留学服务费"].copy()
     recs = []
+    voided_nos = []       # v6: 作废记录的 receipt_no 黑名单，供后续 DELETE
     skip_mht = 0
+    skip_voided = 0
     for i, (_, r) in enumerate(df.iterrows()):
         dt = safe_date(r.get("收款日期"))
         rno = cs(r.get("收据号"))
@@ -543,6 +614,12 @@ def snap_receipt():
         cn = cs(r.get("合同号"))
         if "-MHT-" in cn:
             skip_mht += 1
+            continue
+        status = cs(r.get("状态"))
+        # v6: 作废记录不写入，同时加入删除黑名单
+        if status == "作废":
+            voided_nos.append(rno)
+            skip_voided += 1
             continue
         advisor = cs(r.get("签约顾问"))
         recs.append({
@@ -553,12 +630,37 @@ def snap_receipt():
             "actual_advisor": get_actual_advisor(cn, advisor),
             "dept": cs(r.get("部门")),
             "pay_method": cs(r.get("收款方式")),
-            "status": cs(r.get("状态")),
+            "status": status,
             "sign_biz_type": "留学",  # filter 已保證 款项类别=='留学服务费'
             "amount": cf(r.get("收款金额", 0)),
         })
-    print(f"  收款统计: {len(recs)} 条（跳过 -MHT- {skip_mht} 条）")
-    return recs
+    print(f"  收款统计: {len(recs)} 条（跳过 -MHT- {skip_mht} 条, 作废 {skip_voided} 条）")
+    return recs, voided_nos
+
+def delete_voided_receipts(voided_nos):
+    """[v6 新增] 物理删除 Excel 中标记为作废的收据记录
+
+    处理场景：一条收据之前入库时状态是"已认款"等正常值，后来在源系统
+    被改为"作废"。如果只在写入时过滤，DB 里的老记录会残留。
+    此函数每次 ETL 运行都把当前 Excel 中所有作废号从 DB 删掉。
+
+    Args:
+        voided_nos: 作废的 receipt_no 列表（来自 snap_receipt 返回值）
+    """
+    if not voided_nos:
+        print("  ✓ 作废收据: 源表无作废记录，无需删除")
+        return
+    BATCH = 500
+    total_deleted = 0
+    with get_engine().begin() as conn:
+        for i in range(0, len(voided_nos), BATCH):
+            batch = voided_nos[i:i+BATCH]
+            r = conn.execute(text(
+                "DELETE FROM fact_receipt WHERE receipt_no = ANY(:nos)"
+            ), {"nos": batch})
+            total_deleted += r.rowcount or 0
+    stats["fact_receipt_voided_deleted"] = total_deleted
+    print(f"  ✓ 作废收据物理删除: 源表标记 {len(voided_nos)} 条, DB 实删 {total_deleted} 条")
 
 def snap_fund():
     """已收款未盖章 + 潜在签约 (contractDetail, §2.2)
@@ -677,54 +779,82 @@ def _fix_excel_serial(val):
     return val
 
 def sync_dim_target():
-    """同步月度目标（§7.3 · v5 加 sign_biz_type 维度）
-    Excel【月更】净签目标.xlsx 的字段【留学/培训】 → fact_signing.sign_biz_type
-      - '留学' → '留学'
-      - '培训' / '多语' → '多语'
-      - 其他 / 空 → '留学'（默认）
+    """[v6 重写] 同步月度目标
+
+    数据流:
+        【月更】净签目标.xlsx（列: 所属月份/二级分组部门/留学/培训/超额目标）
+         → normalize_biz_type 归一化业务类型
+         → dim_group_dept 反查 primary_group 填充 department
+         → TRUNCATE dim_monthly_target → 全量 INSERT
+
+    v6 重要变更:
+      1. 不再读 Excel '部门' 列（该列已废弃）。department 字段由 ETL 从
+         dim_group_dept 用 secondary_group 反查 primary_group 自动填充。
+      2. biz_type 映射走全局 normalize_biz_type，支持 '语培'/'培训'/'多语'
+         → '多语'，未知值打警告。
+      3. 改为 TRUNCATE + 全量 INSERT，彻底清除可能存在的历史错分类脏数据。
+         （原 ON CONFLICT UPDATE 策略无法清除已存在但分类错误的旧记录）
     """
     df = read_excel("sign_target")
-    if df is None: return
-    # ★ 先将 Excel 序列号(int)转为真实日期，再统一 to_datetime
+    if df is None:
+        print("  ✗ 【月更】净签目标.xlsx 未找到，跳过")
+        return
+
+    # 预处理：统一日期格式 + 数值转换
     df["所属月份"] = df["所属月份"].apply(_fix_excel_serial)
     df["所属月份"] = pd.to_datetime(df["所属月份"], errors="coerce")
-    df["超额目标（万）"] = pd.to_numeric(df["超额目标（万）"], errors="coerce").fillna(0)
+    # 兼容中英括号写法
+    df["超额目标（万）"] = pd.to_numeric(
+        df.get("超额目标（万）", df.get("超额目标(万)")),
+        errors="coerce"
+    ).fillna(0)
 
-    def _map_biz_type(v):
-        s = cs(v)
-        if s in ("多语", "培训"):
-            return "多语"
-        return "留学"  # 其他值/空/'留学' 全部归默认
+    # 加载 secondary_group → primary_group 映射，用于填充 department
+    group_to_primary = load_group_to_primary()
 
     recs = []
+    missing_group_warned = set()
     for _, r in df.dropna(subset=["所属月份"]).iterrows():
-        dept = cs(r.get("部门"))
-        if not dept: continue
+        sec_group = cs(r.get("二级分组部门"), "全部") or "全部"
         # 兼容欄位名（根據原始表頭）：'留学/培训' 為首選，兜底 '业务类型'
         raw_bt = r.get("留学/培训")
         if raw_bt is None or (isinstance(raw_bt, float) and pd.isna(raw_bt)):
             raw_bt = r.get("业务类型")
+
+        # department 字段：从 dim_group_dept 反查，反查不到给空字符串
+        # （schema 的 NOT NULL 约束允许空串，只不允许 NULL）
+        department = group_to_primary.get(sec_group, "")
+        if not department and sec_group not in missing_group_warned and sec_group != "全部":
+            print(f"  [提示] secondary_group='{sec_group}' 在 dim_group_dept 中无对应 primary_group，department 留空")
+            missing_group_warned.add(sec_group)
+
         recs.append({
             "year_month":      r["所属月份"].strftime("%Y-%m"),
-            "department":      dept,
-            "secondary_group": cs(r.get("二级分组部门"), "全部") or "全部",
-            "sign_biz_type":   _map_biz_type(raw_bt),
+            "department":      department,
+            "secondary_group": sec_group,
+            "sign_biz_type":   normalize_biz_type(raw_bt),
             "target_amount":   float(r["超额目标（万）"]),
         })
+
+    # v6: 整表 TRUNCATE 后全量重灌，彻底清除历史脏数据
+    # 比 ON CONFLICT UPDATE 更安全，避免"错分类的旧记录不会被自动清除"的问题
     with get_engine().begin() as conn:
+        conn.execute(text("TRUNCATE TABLE dim_monthly_target RESTART IDENTITY"))
         for rec in recs:
             conn.execute(text("""
                 INSERT INTO dim_monthly_target
-                  (year_month,department,secondary_group,sign_biz_type,target_amount)
+                  (year_month, department, secondary_group, sign_biz_type, target_amount)
                 VALUES
-                  (:year_month,:department,:secondary_group,:sign_biz_type,:target_amount)
-                ON CONFLICT (year_month,secondary_group,sign_biz_type) DO UPDATE SET
-                  target_amount=EXCLUDED.target_amount,
-                  department=EXCLUDED.department,
-                  updated_at=NOW()
+                  (:year_month, :department, :secondary_group, :sign_biz_type, :target_amount)
             """), rec)
+
     stats["dim_monthly_target"] = len(recs)
-    print(f"  ✓ {len(recs)} 条目标（含 sign_biz_type 维度）")
+    # 打印分类统计便于验证
+    by_type = {}
+    for r in recs:
+        by_type[r["sign_biz_type"]] = by_type.get(r["sign_biz_type"], 0) + 1
+    type_summary = ", ".join(f"{k}={v}" for k, v in sorted(by_type.items()))
+    print(f"  ✓ {len(recs)} 条目标（全量重灌 · 含 sign_biz_type 维度 · {type_summary}）")
 
 def sync_dim_contract_group():
     """同步合同分组（双口径：系统口径 + 顾问口径）"""
@@ -733,6 +863,8 @@ def sync_dim_contract_group():
     df = df.dropna(subset=["合同号"]).drop_duplicates(subset=["合同号"])
     with get_engine().begin() as conn:
         for i, (_, r) in enumerate(df.iterrows()):
+            # 兼容列名写法（中英括号）
+            gda = cs(r.get("分组部门（顾问口径）", "")) or cs(r.get("分组部门(顾问口径)", ""))
             conn.execute(text("""
                 INSERT INTO dim_contract_group (contract_no,group_dept,actual_advisor,group_dept_advisor)
                 VALUES (:cn,:gd,:aa,:gda)
@@ -745,7 +877,7 @@ def sync_dim_contract_group():
                 "cn": cs(r["合同号"]),
                 "gd": cs(r.get("分组部门", "")),
                 "aa": cs(r.get("实际签约顾问", "")),
-                "gda": cs(r.get("分组部门（顾问口径）", "")),
+                "gda": gda,
             })
     stats["dim_contract_group"] = len(df)
     print(f"  ✓ {len(df)} 条映射（含顾问口径）")
@@ -770,7 +902,7 @@ def sync_dim_group_dept():
                   biz_block=EXCLUDED.biz_block
             """), {
                 "sg": sg,
-                "sgt": cs(r.get("二级分组部门（整理）", "")),
+                "sgt": cs(r.get("二级分组部门（整理）", "")) or cs(r.get("二级分组部门(整理)", "")),
                 "pg": cs(r.get("一级分组部门", "")),
                 "bb": cs(r.get("业务板块", "")),
             })
@@ -838,7 +970,11 @@ def write_refund(records):
     print(f"  ✓ 退费合计写入 {total_ins} 条")
 
 def write_receipt(records):
-    """写入收款事实表（ON CONFLICT 时更新为最新数据，不再跳过）"""
+    """写入收款事实表（ON CONFLICT 时更新为最新数据，不再跳过）
+
+    注意: 作废记录在 snap_receipt 阶段已被过滤掉，这里只处理正常记录。
+    配合 delete_voided_receipts() 保证 DB 不残留作废数据。
+    """
     if not records: return
     ins = 0
     with get_engine().begin() as conn:
@@ -864,7 +1000,7 @@ def write_receipt(records):
             """), rec)
             ins += 1
     stats["fact_receipt"] = ins
-    print(f"  ✓ 收款写入/更新 {ins} 条（全量覆盖，无跳过）")
+    print(f"  ✓ 收款写入/更新 {ins} 条（已过滤作废）")
 
 def write_fund_snapshot(records):
     """写入资金快照（当日全量替换）"""
@@ -899,6 +1035,18 @@ def verify():
                 n = conn.execute(text(f"SELECT COUNT(*) FROM {t}")).scalar()
                 print(f"  {t:<30} {n:>10,} 行")
             except: pass
+
+        # v6: 额外检验 dim_monthly_target 的 sign_biz_type 分布
+        try:
+            rows = conn.execute(text(
+                "SELECT sign_biz_type, COUNT(*) FROM dim_monthly_target GROUP BY sign_biz_type ORDER BY sign_biz_type"
+            )).all()
+            if rows:
+                print(f"\n  dim_monthly_target 业务类型分布:")
+                for bt, cnt in rows:
+                    print(f"    {bt:<10} {cnt:>6} 条")
+        except: pass
+
     print("\n  本次写入：")
     for k, v in stats.items():
         print(f"    {k:<30} +{v:>8,}")
@@ -908,7 +1056,7 @@ def verify():
 # ═══════════════════════════════════════════════════════════════
 if __name__ == "__main__":
     start = datetime.now()
-    print(f"广州前途财务日报 · 每日数据同步 v2")
+    print(f"广州前途财务日报 · 每日数据同步 v6")
     print(f"执行时间: {start:%Y-%m-%d %H:%M:%S}")
     print(f"执行日:   {TODAY}")
     print(f"财年起始: {FY_START}")
@@ -925,12 +1073,12 @@ if __name__ == "__main__":
         print(f"  {status} [{src}] {fn} → {sheet} (header={hdr})")
 
     try:
-        # 维度同步
+        # 维度同步（注意: sync_dim_target 依赖 dim_group_dept, 所以顺序不能变）
         sep("维度同步")
         sync_dim_advisor()
+        sync_dim_group_dept()       # v6: 必须在 sync_dim_target 之前，因后者反查依赖此表
         sync_dim_target()
         sync_dim_contract_group()
-        sync_dim_group_dept()
 
         # 签约（所有模块合并后写入）
         sep("签约数据")
@@ -946,7 +1094,10 @@ if __name__ == "__main__":
 
         # 快照
         sep("快照数据")
-        write_receipt(snap_receipt())
+        # v6: snap_receipt 现在返回 (records, voided_nos)，先删除作废再写入正常记录
+        receipt_recs, voided_nos = snap_receipt()
+        delete_voided_receipts(voided_nos)
+        write_receipt(receipt_recs)
         write_fund_snapshot(snap_fund() + snap_unrecognized())
 
         # 验证

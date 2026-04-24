@@ -22,7 +22,9 @@ async function loadMe() {
     if (!res.ok) return null;
     var d = await res.json();
     return {
-      role: d.role,
+      role: d.role,                           // finance 层 role
+      gw_role: d.gw_role || '',               // v4: gateway 层 role
+      is_system_admin: !!d.is_system_admin,   // v4: 后端已算好
       username: d.username,
       dept_scope: d.department_scope,
       advisor_name: d.advisor_name,
@@ -80,6 +82,12 @@ async function fetchReport(execDate, filterParams) {
   // 角色網關：ADVISOR → body 加 class，CSS 自動隱藏潛在簽約 / 顧問排行 / 鎖顧問篩選器
   if (CU.role === 'ADVISOR') {
     document.body.classList.add('role-advisor');
+  }
+  // v4: 非系统管理员（gw_role != 'admin'）隐藏『同步数据』按钮
+  // 后端 /api/v1/etl/trigger 仍独立做 require_system_admin 防御（defense-in-depth）
+  if (!CU.is_system_admin) {
+    var etlBtn = document.getElementById('btn-etl');
+    if (etlBtn) etlBtn.style.display = 'none';
   }
   // v5.1 手机端 UX：将筛选器重组为手风琴结构（桌面端不生效）
   setupMobileAccordion();
@@ -541,6 +549,11 @@ function kCard(lbl, tag, val, sub, bdgs, extra) {
 async function triggerETL() {
   var btn = $('btn-etl'), txt = $('etl-txt');
   if (btn.classList.contains('running')) return;
+  // v4: 前端第二道防線（後端 require_system_admin 才是真實權限）
+  if (!CU || !CU.is_system_admin) {
+    alert('此操作僅限系統管理員');
+    return;
+  }
   if (!confirm('确认执行数据同步（ETL）？\n此操作将从 Excel 数据源重新清洗并写入数据库。')) return;
   btn.classList.add('running');
   txt.textContent = '同步中...';

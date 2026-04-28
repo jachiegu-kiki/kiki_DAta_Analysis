@@ -4,6 +4,7 @@ signing.py — 签约域（第四章）
 extract:
   · A1/A2/A3 — ERP 签约（日更/月更/历史）
   · B1/B2/B3 — 学校签约（日更/月更/历史）
+  · B4       — 周更补充签约（GroupWeekAmount-OY，财务反馈追加）
   · C1       — 迅程签约（日更）
   · D        — 在线签约（月更）
 load:
@@ -209,6 +210,68 @@ def mod_D():
                               "多语", school,
                               r.get("当日预收款总计", 0), "月更"))
     print(f"  D  月更在线签约: {len(recs)} 条")
+    return recs
+
+
+# ───────────────────────────────────────────────────────────────
+# B4 — 周更补充档 GroupWeekAmount-OY（财务反馈追加 / 日更层补充）
+# ───────────────────────────────────────────────────────────────
+# 财务反馈原文（2026-04）：
+#   周更档作为日更档之外的"系统外调整"补充。抓数逻辑改为：
+#     时间维度 在 日更范围内（dt >= DAILY_START）
+#       且
+#     （ 管理部门名称 = '出国考试'   或   项目备注 包含 '申诉调整' ）
+#
+# 设计要点：
+#   1. 第一性原理：只有"系统外调整"才需要从周更档补回，判断信号即上述两条。
+#      其他记录都已在 B1（日更 OY_Income）/ C1（日更 xuncheng）/ B2,D（月更）覆盖，
+#      不应在此重复抓取，否则会造成跨档重复。
+#   2. 奥卡姆剃刀：完全复用既有辅助函数（_school_from_mgmt / _line_from_country /
+#      normalize_biz_type via _sign_rec），不引入任何新映射。
+#   3. source_system='日更'：周更档补充的是日更层数据缺口，写入策略与日更一致，
+#      由 write_signing 在每次同步时自动按 source_system 全量刷新。
+# ───────────────────────────────────────────────────────────────
+def mod_B4():
+    """B4 周更补充签约 GroupWeekAmount-OY
+    抓数规则：dt >= DAILY_START
+              且（管理部门名称 = '出国考试'  OR  项目备注 包含 '申诉调整'）
+    """
+    df = read_excel("oy_weekly_group")
+    if df is None: return []
+    recs = []
+    for i, (_, r) in enumerate(df.iterrows()):
+        # 时间维度：dt = 年+月+日，必须在日更范围内
+        dt = combine_ymd(r.get("年"), r.get("月"), r.get("日"))
+        if not dt or dt < DAILY_START: continue
+
+        # 业务过滤：管理部门=出国考试  OR  项目备注 包含 申诉调整
+        mgmt = cs(r.get("管理部门名称"))
+        memo = cs(r.get("项目备注"))
+        if not (mgmt == "出国考试" or "申诉调整" in memo):
+            continue
+
+        # 标识符：优先班级编码（在周更档从不为空），降级听课证号/合同编号/订单号
+        cn = (cs(r.get("班级编码"))
+              or cs(r.get("听课证号/合同编号/订单号"))
+              or f"WKOY_{i}")
+
+        # 学校归属：复用既有映射（含'前途出国'→前途出国 / 含'出国考试'→迅程 / 其余→广州前途）
+        school = _school_from_mgmt(mgmt)
+
+        # 条线：优先取 '条线' 列；为空时按 '国家' 推导
+        line = cs(r.get("条线")) or _line_from_country(r.get("国家"))
+
+        # 业务类型：'留学/培训' 列原值交给 normalize_biz_type 归一化
+        #   '培训' → 多语   '留学' → 留学   空 → 留学
+        biz_type_raw = cs(r.get("留学/培训")) or "留学"
+
+        # 金额：当日预收款总计
+        amount = r.get("当日预收款总计", 0)
+
+        recs.append(_sign_rec(cn, dt, "", "", line,
+                              biz_type_raw, school,
+                              amount, "日更"))
+    print(f"  B4 周更补充签约: {len(recs)} 条")
     return recs
 
 

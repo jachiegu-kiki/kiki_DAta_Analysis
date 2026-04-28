@@ -12,12 +12,17 @@ daily_sync.py v6 — 完整 ETL（重构入口）
           - 未知 biz_type 值不静默归'留学'，打警告日志
           - 整表 TRUNCATE 后全量重灌，避免历史错分类脏数据残留
 
+本版追加（2026-04-28）:
+  [B4 新增] 周更补充档 GroupWeekAmount-OY 接入签约链路
+          抓数规则：dt 在日更范围内 且（管理部门='出国考试' OR 项目备注 包含 '申诉调整'）
+          只追加一行 mod_B4() 调用，A1-A3/B1-B3/C1/D 与 write_signing 完全不变
+
 架构（拆分为多模块，逻辑不变）:
   config.py          配置 / FILES 注册表 / engine / stats
   utils.py           通用工具（清洗、Excel 读取、biz_type 归一化）
   time_boundary.py   时间边界（FY_START / DAILY_START / layer_of）
   dimensions.py      维度域（加载 + 同步）
-  signing.py         签约域（A1~A3 / B1~B3 / C1 / D + 写入）
+  signing.py         签约域（A1~A3 / B1~B4 / C1 / D + 写入）
   refund.py          退费域（R1~R3 + 写入）
   snapshot.py        快照域（收款 / 已收款未盖章 / 潜在签约 / 未认款 + 写入）
   daily_sync.py      主入口（编排 + 验证）
@@ -44,7 +49,7 @@ from dimensions import (
 )
 from signing import (
     mod_A1, mod_A2, mod_A3,
-    mod_B1, mod_B2, mod_B3,
+    mod_B1, mod_B2, mod_B3, mod_B4,
     mod_C1, mod_D,
     write_signing,
 )
@@ -117,7 +122,9 @@ if __name__ == "__main__":
 
         # 签约（所有模块合并后写入）
         sep("签约数据")
-        all_sign = mod_A1() + mod_A2() + mod_A3() + mod_B1() + mod_B2() + mod_B3() + mod_C1() + mod_D()
+        all_sign = (mod_A1() + mod_A2() + mod_A3()
+                    + mod_B1() + mod_B2() + mod_B3() + mod_B4()
+                    + mod_C1() + mod_D())
         print(f"  合计签约记录: {len(all_sign)} 条")
         write_signing(all_sign)
 

@@ -34,6 +34,9 @@ FILES = {
     "school_yj":      (PULLDATA_DIR, "【月更】学校YJ.xlsx",                 "签约金额按天",   0),  # B2
     "online_yj":      (PULLDATA_DIR, "【月更】在线YJ.xlsx",                 "签约金额按天",   0),  # D
     "sign_target":    (PULLDATA_DIR, "【月更】净签目标.xlsx",               "Sheet1",         0),
+    # ─── 周更补充档（B4：财务反馈追加）───
+    # 抓数规则：dt 在日更范围内 且（管理部门名称='出国考试' 或 项目备注 包含 '申诉调整'）
+    "oy_weekly_group": (PULLDATA_DIR, "【周更】GroupWeekAmount-OY.xlsx",     "学校导入明细",   0),  # B4
     # ─── PreData（手动/维度数据）───
     "staff":          (PREDATA_DIR, "职员表.xlsx",               "顾问部门",     0),
     "sign_group":     (PREDATA_DIR, "签约分组.xlsx",             "Sheet1",       0),

@@ -17,6 +17,18 @@ daily_sync.py v6 — 完整 ETL（重构入口）
           抓数规则：dt 在日更范围内 且（管理部门='出国考试' OR 项目备注 包含 '申诉调整'）
           只追加一行 mod_B4() 调用，A1-A3/B1-B3/C1/D 与 write_signing 完全不变
 
+本版追加（2026-04-29 · v7 多语签约顾问/分组回填）:
+  [Eurasia] 接入《26财年欧亚事业部签约表 收入人次 sheet》作为多语签约
+            advisor_name + secondary_group 的维度数据源.
+            - dimensions.load_eurasia_signing_map / get_eurasia_advisor_group
+              建立 班级编码 / 听课证号 / 听课证号.1 / 合同编号 / (出国考试)班级编码+学员编码
+              → (签约顾问=学管||顾问, secondary_group=分组) 的多键索引
+            - signing._sign_rec 仅当 biz_type='多语' 且 advisor 入参为空时才查欧亚维度,
+              A1/A2/A3 行为完全不变, B1/B2/B3/B4/D 自动受益
+            - B4 / D 模块支持 班级编码+学员编码 复合键 (D 暂作占位符, 待源 sheet 加列)
+            - 加载阶段对 分组='#N/A' 记录做"一进一出"校验,
+              现金收入_人民币 合计 ≠0 时打印告警明细
+
 架构（拆分为多模块，逻辑不变）:
   config.py          配置 / FILES 注册表 / engine / stats
   utils.py           通用工具（清洗、Excel 读取、biz_type 归一化）

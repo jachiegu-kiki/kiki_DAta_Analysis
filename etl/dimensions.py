@@ -155,6 +155,124 @@ def get_subline(contract_no: str) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
+#  [v7 新增] 欧亚事业部签约表 → 多语签约 advisor / secondary_group 维度
+#  用户反馈 2026-04-29：
+#    多语签约记录(B1/B2/B3/B4/D) 缺签约顾问列, 须从
+#    《26财年欧亚事业部签约表.xlsx 收入人次 sheet》登记，规则：
+#      签约顾问 = 学管 if 学管!=空 else 顾问
+#      secondary_group = 分组列 ('#N/A' 视为空)
+#      索引键 = 班级编码 / 听课证号 / 听课证号.1 / 合同编号
+#               学校='出国考试' 时额外索引 班级编码+学员编码
+#      校验：分组='#N/A' 全部记录 现金收入_人民币 合计应为 0（一进一出）
+# ═══════════════════════════════════════════════════════════════
+def load_eurasia_signing_map():
+    """加载欧亚事业部签约表 → (多键索引 dict, '#N/A' 异常记录列表)
+
+    索引值：(签约顾问, secondary_group)
+    pandas 默认会把 Excel 错误值 '#N/A' 转为 NaN，故此处用 keep_default_na=False
+    + na_values=[] 重读以保留原始文本。
+    """
+    if "eurasia_sign" in _dim_cache:
+        return _dim_cache["eurasia_sign"]
+
+    key_to_av = {}      # multikey → (advisor, secondary_group)
+    na_records = []     # 分组='#N/A' 的所有记录（用于一进一出校验）
+
+    from utils import get_file, cf
+    from config import FILES
+    p = get_file("eurasia_signing")
+    if not p:
+        print("  [警告] 26财年欧亚事业部签约表.xlsx 未找到，跳过欧亚维度加载")
+        _dim_cache["eurasia_sign"] = (key_to_av, na_records)
+        return key_to_av, na_records
+
+    _, _, sheet, header = FILES["eurasia_signing"]
+    try:
+        df = pd.read_excel(p, sheet_name=sheet, header=header,
+                           keep_default_na=False, na_values=[])
+    except Exception as e:
+        print(f"  [警告] 读取 eurasia_signing 失败: {e}")
+        _dim_cache["eurasia_sign"] = (key_to_av, na_records)
+        return key_to_av, na_records
+
+    na_amount_sum = 0.0
+    for i, (_, r) in enumerate(df.iterrows()):
+        # 1) 签约顾问：学管优先，否则顾问
+        adv = cs(r.get("学管")) or cs(r.get("顾问"))
+        # 2) 二级分组：分组列；'#N/A' 文本视为空（同时记录用于校验）
+        grp_raw = cs(r.get("分组"))
+        is_na = (grp_raw == "#N/A")
+        grp = "" if is_na else grp_raw
+
+        # #N/A 一进一出校验：累加现金收入_人民币
+        if is_na:
+            cash_rmb = cf(r.get("现金收入_人民币"))
+            na_amount_sum += cash_rmb
+            na_records.append({
+                "row": i + 2,  # +2: header=1 + 0-based offset
+                "学校": cs(r.get("学校")),
+                "班级编码": cs(r.get("班级编码")),
+                "听课证号": cs(r.get("听课证号")),
+                "合同编号": cs(r.get("合同编号")),
+                "现金收入_人民币": cash_rmb,
+            })
+
+        if not (adv or grp):
+            continue
+        value = (adv, grp)
+
+        # 3) 多键索引：班级编码 / 听课证号 / 听课证号.1 / 合同编号
+        for col in ("班级编码", "听课证号", "听课证号.1", "合同编号"):
+            k = cs(r.get(col))
+            if k and k not in key_to_av:
+                key_to_av[k] = value
+
+        # 4) school='出国考试'：班级编码+学员编码 复合键
+        school = cs(r.get("学校"))
+        if school == "出国考试":
+            bj = cs(r.get("班级编码"))
+            stu = cs(r.get("学员编码"))
+            if bj and stu:
+                k = f"{bj}|{stu}"
+                if k not in key_to_av:
+                    key_to_av[k] = value
+
+    # 一进一出校验告警
+    if na_records:
+        eps = 0.01
+        if abs(na_amount_sum) > eps:
+            print(f"  [告警] 收入人次 sheet 中 分组='#N/A' 共 {len(na_records)} 条，"
+                  f"现金收入_人民币合计 = {na_amount_sum:.2f} ≠ 0（应一进一出, 请人工核对）")
+            for rec in na_records[:5]:
+                print(f"    第 {rec['row']:>4} 行 学校={rec['学校']:<6} "
+                      f"班级编码={rec['班级编码']:<24} 听课证号={rec['听课证号']:<24} "
+                      f"合同编号={rec['合同编号']:<20} 金额={rec['现金收入_人民币']:>12.2f}")
+            if len(na_records) > 5:
+                print(f"    ... 余 {len(na_records)-5} 条略")
+        else:
+            print(f"  [信息] 收入人次 sheet 中 分组='#N/A' 共 {len(na_records)} 条，"
+                  f"合计=0（一进一出 OK）")
+
+    _dim_cache["eurasia_sign"] = (key_to_av, na_records)
+    print(f"  ✓ 欧亚事业部签约表索引：{len(key_to_av)} 个键 / #N/A 行 {len(na_records)} 条")
+    return key_to_av, na_records
+
+
+def get_eurasia_advisor_group(*candidate_keys):
+    """[v7 新增] 按候选键序贯查欧亚事业部签约映射 → (advisor, secondary_group)
+
+    任一候选键命中即返回；全部未命中返回 ('','')。空串/None 自动跳过。
+    候选键传入顺序即优先级（建议：复合键 > 单键）。
+    """
+    m, _ = load_eurasia_signing_map()
+    for k in candidate_keys:
+        k = cs(k)
+        if k and k in m:
+            return m[k]
+    return ("", "")
+
+
+# ═══════════════════════════════════════════════════════════════
 #  维度同步（写入 dim_* 表）
 # ═══════════════════════════════════════════════════════════════
 def sync_dim_advisor():

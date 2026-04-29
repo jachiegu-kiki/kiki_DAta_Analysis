@@ -19,21 +19,46 @@ from dimensions import (
     load_staff_map,
     get_group, get_group_advisor,
     get_actual_advisor, get_subline,
+    get_eurasia_advisor_group,
 )
 
 
 def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
-              biz_type="留学", school="ERP", gross_sign=0, source="日更"):
-    """统一构建签约记录"""
+              biz_type="留学", school="ERP", gross_sign=0, source="日更",
+              eurasia_keys=None):
+    """统一构建签约记录
+
+    [v7 新增 eurasia_keys] 多语签约 advisor / secondary_group 回填:
+        当 biz_type 归一化后为 '多语' 且 advisor 入参为空时,
+        以 eurasia_keys (优先) 和 contract_no (兜底) 作候选键查
+        《26财年欧亚事业部签约表 收入人次》维度,命中即覆盖 advisor 与 sg/sga.
+        A1/A2/A3 不传 eurasia_keys 且 advisor 已有值, 行为完全不变.
+    """
     cn = cs(contract_no)
     # v6: biz_type 统一走归一化，保证 '语培'/'培训' 也能正确识别
     biz_type = normalize_biz_type(biz_type)
+
+    # [v7] 多语签约且未给 advisor 时, 从欧亚事业部签约表回填
+    eurasia_adv = ""
+    eurasia_grp = ""
+    if biz_type == "多语" and not cs(advisor):
+        keys = list(eurasia_keys) if eurasia_keys else []
+        keys.append(cn)
+        eurasia_adv, eurasia_grp = get_eurasia_advisor_group(*keys)
+
+    final_advisor = cs(advisor) or eurasia_adv
+
     sg = "语培" if biz_type == "多语" else get_group(cn, advisor)
     sga = "语培" if biz_type == "多语" else get_group_advisor(cn, advisor)
+    # [v7] 命中欧亚维度: 用 收入人次 sheet 的 '分组' 列覆盖默认 '语培'
+    if eurasia_grp:
+        sg = eurasia_grp
+        sga = eurasia_grp
+
     return {
         "contract_no": cn, "sign_date": sign_date,
-        "advisor_name": cs(advisor), "original_dept": cs(dept),
-        "actual_advisor": get_actual_advisor(cn, advisor),
+        "advisor_name": final_advisor, "original_dept": cs(dept),
+        "actual_advisor": get_actual_advisor(cn, final_advisor),
         "line": cs(line), "sub_line": get_subline(cn),
         "secondary_group": sg,
         "secondary_group_advisor": sga,
@@ -206,9 +231,22 @@ def mod_D():
         else: continue  # 文档明确：其余跳过不处理
         cn = cs(r.get("班级编号")) or f"ONLINE_{i}"
         country = cs(r.get("国家"))
+
+        # [v7] 欧亚维度候选键（多语回填）
+        # ─────────────────────────────────────────────────────────
+        # 用户反馈 2026-04-29 第 4 条：
+        #   出国考试(=迅程) 应使用 '班级编号'+'学员编码' 复合键比对
+        #   '【月更】在线YJ.xlsx 签约金额按天 sheet'，
+        #   但该 sheet 当前暂无 '学员编码' 列, 后续接入后此处自动启用。
+        # 占位符：当 '学员编码' 列存在且非空时拼成复合键, 否则仅 cn 兜底
+        # ─────────────────────────────────────────────────────────
+        stu = cs(r.get("学员编码"))   # TODO: 在线YJ 加上'学员编码'列后, 此键将自动生效
+        eurasia_keys = [f"{cn}|{stu}"] if (cn and stu) else None
+
         recs.append(_sign_rec(cn, dt, "", "", _line_from_country(country),
                               "多语", school,
-                              r.get("当日预收款总计", 0), "月更"))
+                              r.get("当日预收款总计", 0), "月更",
+                              eurasia_keys=eurasia_keys))
     print(f"  D  月更在线签约: {len(recs)} 条")
     return recs
 
@@ -268,9 +306,19 @@ def mod_B4():
         # 金额：当日预收款总计
         amount = r.get("当日预收款总计", 0)
 
+        # [v7] 欧亚维度候选键（仅多语回填使用; 留学走 ERP 路径无影响）
+        # 优先顺序：班级编码+学员编码 (出国考试) → 听课证号/合同编号/订单号 → 班级编码
+        stu = cs(r.get("学员编码"))
+        listening = cs(r.get("听课证号/合同编号/订单号"))
+        eurasia_keys = []
+        if cn and stu: eurasia_keys.append(f"{cn}|{stu}")
+        if listening:  eurasia_keys.append(listening)
+        # cn 由 _sign_rec 自动追加, 此处无需重复
+
         recs.append(_sign_rec(cn, dt, "", "", line,
                               biz_type_raw, school,
-                              amount, "日更"))
+                              amount, "日更",
+                              eurasia_keys=eurasia_keys))
     print(f"  B4 周更补充签约: {len(recs)} 条")
     return recs
 

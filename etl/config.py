@@ -38,6 +38,11 @@ FILES = {
     # 抓数规则：dt 在日更范围内 且（管理部门名称='出国考试' 或 项目备注 包含 '申诉调整'）
     "oy_weekly_group": (PULLDATA_DIR, "【周更】GroupWeekAmount-OY.xlsx",     "学校导入明细",   0),  # B4
     # ─── PreData（手动/维度数据）───
+    # ─── 欧亚事业部签约表（多语签约顾问/二级分组维度源, 用户反馈 2026-04-29）───
+    # 用途：B1/B2/B3/B4/D 多语签约记录回填 advisor_name + secondary_group
+    # 索引键：班级编码 / 听课证号 / 听课证号.1 / 合同编号 / (出国考试 时) 班级编码+学员编码
+    # 副产物：分组='#N/A' 的记录现金收入_人民币 合计若 ≠0 触发告警（一进一出校验）
+    "eurasia_signing": (PREDATA_DIR, "26财年欧亚事业部签约表.xlsx",          "收入人次",       0),
     "staff":          (PREDATA_DIR, "职员表.xlsx",               "顾问部门",     0),
     "sign_group":     (PREDATA_DIR, "签约分组.xlsx",             "Sheet1",       0),
     "group_dept_param": (PREDATA_DIR, "参数-分组部门.xlsx",       "Sheet1",       0),

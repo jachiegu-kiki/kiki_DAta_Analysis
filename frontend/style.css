@@ -241,3 +241,65 @@ body.role-advisor #f-adv .dd-list{display:none !important}
   .rc-tbl tfoot td{font-size:11px;padding:7px 4px}
   .rc-tbl tfoot td.cat{padding-left:10px}
 }
+
+/* ============================================================
+   v6 (2026-04-30) 看板说明 Tooltip · 向上展开
+   ------------------------------------------------------------
+   第一性原理：用户阅读流是「由上往下」 — 阅读到第 N 个 sec 时，
+   前 N-1 个 sec 已读完。tooltip 必然要遮挡某些区域，最痛点是
+   遮挡「即将阅读」的下方数据；最可接受是遮挡「已读完」的上方区域。
+   故 tooltip 一律从 tag 上方展开（bottom:calc(100% + ...)），
+   彻底解除对下方 KPI 数据的覆盖。
+
+   逆向思维：不再问「往哪边展开能完全不挡」（答案：不存在），
+   而问「往哪边展开对当前阅读流干扰最小」。
+   奥卡姆剃刀：相对原下方展开方案，仅翻转 top↔bottom、三角箭头朝向、
+   入场动画位移符号 — 共 6 处微改；JS 与 HTML 完全不变。
+
+   ── 桌面：hover 触发；
+   ── 移动端：tap 触发（由 JS 切换 .tooltip-open class，因为 :hover 不可靠）。
+   white-space:pre-line 让 data-tooltip 内的 &#10; 正确换行。
+   ============================================================ */
+.sec-tag[data-tooltip]{position:relative;cursor:help}
+.sec-tag[data-tooltip]::before,
+.sec-tag[data-tooltip]::after{
+  position:absolute;opacity:0;pointer-events:none;
+  transition:opacity .2s ease,transform .2s ease;
+  z-index:200
+}
+.sec-tag[data-tooltip]::after{
+  content:attr(data-tooltip);
+  bottom:calc(100% + 12px);right:0;
+  width:max-content;max-width:380px;
+  background:linear-gradient(135deg,var(--grn3),var(--grn2));
+  color:#fff;
+  padding:13px 16px;border-radius:8px;
+  font-size:10px;line-height:1.85;
+  font-family:var(--sans);font-weight:400;
+  letter-spacing:.2px;text-align:left;
+  white-space:pre-line;
+  box-shadow:0 -12px 36px rgba(0,40,0,.28),0 0 0 1px rgba(255,255,255,.08) inset;
+  transform:translateY(4px)
+}
+.sec-tag[data-tooltip]::before{
+  content:'';
+  bottom:calc(100% + 6px);right:14px;
+  width:0;height:0;
+  border:6px solid transparent;
+  border-top-color:var(--grn2);
+  transform:translateY(4px)
+}
+.sec-tag[data-tooltip]:hover::after,
+.sec-tag[data-tooltip]:hover::before,
+.sec-tag.tooltip-open::after,
+.sec-tag.tooltip-open::before{
+  opacity:1;transform:translateY(0);pointer-events:auto
+}
+@media(max-width:768px){
+  .sec-tag[data-tooltip]::after{
+    max-width:calc(100vw - 28px);
+    right:-4px;font-size:11px;
+    padding:11px 13px;line-height:1.75
+  }
+  .sec-tag[data-tooltip]::before{right:10px}
+}

@@ -854,6 +854,12 @@ function rcBuildCard(view, p1, p2, data) {
   for (var i = 0; i < maxLen; i++) {
     var a = r1[i] || { name: (r2[i]||{}).name || '', gross:0, refund:0, net:0 };
     var b = r2[i] || { name: (r1[i]||{}).name || '', gross:0, refund:0, net:0 };
+	
+	if (a.gross == 0 && a.refund == 0 && a.net == 0 &&
+        b.gross == 0 && b.refund == 0 && b.net == 0) {
+      continue;
+    }
+	
     bodyHtml += '<tr>'
       + '<td class="cat">' + a.name + '</td>'
       + '<td>' + rcFmt(a.gross)  + '</td>'

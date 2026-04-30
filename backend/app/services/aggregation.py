@@ -1,7 +1,18 @@
 # backend/app/services/aggregation.py
 """
-聚合服务 v5.1
+聚合服务 v5.2
 ────────────────────────────────────────────────────────────────
+v5.2 變更 (2026-04):
+  [新增] region_comparison 字段 — "条线/板块对照"看板数据.
+    第一性原理: 与 净签 KPI 同源同口径 (同 rbac、同 ufilter、同时间窗、同度量),
+                仅在尾端追加 GROUP BY 维度 (line / biz_block);
+                ⇒ SUM(net) 跨所有桶 ≡ 净签 KPI value 自动成立.
+    逆向思维:   权限不另写 — 直接复用 s_rbac/s_uf/rf_rbac/rf_uf,
+                SCOPED biz_block / UI 筛选 / 顾问筛选自动生效;
+                参照"业务板块"筛选权限路径 (secondary_group_advisor → biz_block 反查).
+    Occam:     单条 SQL 同时算 4 时段 × 2 维度; COALESCE(NULLIF(...,''),'未分类')
+                统一空值, 保证总和与 KPI 完全相符. 仅增不改, 不影响任何既有逻辑.
+
 v5.1 變更 (2026-04):
   [語義平移] 「今日收款」「今日凈簽」KPI 由 today 改為 yesterday。
     第一性原理: 在每日 ETL 系統中，「最近一個完整數據日」是昨天，
@@ -671,6 +682,94 @@ async def build_daily_report(
     m_net=ns("m_gs","m_rf"); m_yoy_n=ns("m_yoy_gs","m_yoy_rf"); m_mom_n=ns("m_mom_gs","m_mom_rf")
     fy_net=ns("fy_gs","fy_rf"); fy_yoy_n=ns("fy_yoy_gs","fy_yoy_rf")
 
+    # ══════════════════════════════════════════════════════════
+    #  条 线 / 板 块 对 照 (REGION_COMPARISON, v5.2 新增)
+    # ──────────────────────────────────────────────────────────
+    # 第一性原理:
+    #   净签 KPI = SUM(rbac+ufilter 满足条件下的 gross_sign) - SUM(同条件下的 gross_refund)
+    #   "条线/板块对照" = 在同一查询的尾端追加一个 GROUP BY 维度
+    #   ⇒ SUM(net) 跨所有桶 ≡ 净签 KPI value (恒等式自动成立, 无需额外校准)
+    # 逆向思维:
+    #   权限不是另写一套, 是"不写" — 直接复用 s_rbac / s_uf / rf_rbac / rf_uf
+    #   所以 SCOPED biz_block (例: 仅大北美) / UI 筛选 / 顾问筛选 一并自动生效
+    #   参照"业务板块"筛选的权限路径: SCOPED 经 secondary_group_advisor → biz_block 反查
+    # Occam 剃刀:
+    #   单条 SQL 同时算 4 时段 × 2 维度 (line / biz_block);
+    #   COALESCE(NULLIF(...,''), '未分类') 统一空值, 保证 SUM 总和与 KPI 完全相符.
+    # ══════════════════════════════════════════════════════════
+    def _rc_sql(group_sign_expr: str, group_refund_expr: str,
+                sign_join: str = "", refund_join: str = ""):
+        gs_bucket = f"COALESCE(NULLIF({group_sign_expr}, ''), '未分类')"
+        rf_bucket = f"COALESCE(NULLIF({group_refund_expr}, ''), '未分类')"
+        return f"""
+            WITH sign_agg AS (
+                SELECT
+                    {gs_bucket} AS bucket,
+                    SUM(CASE WHEN sign_date=:yesterday THEN gross_sign ELSE 0 END)/10000.0 AS d_gs,
+                    SUM(CASE WHEN sign_date BETWEEN :week_start  AND :today THEN gross_sign ELSE 0 END)/10000.0 AS w_gs,
+                    SUM(CASE WHEN sign_date BETWEEN :month_start AND :today THEN gross_sign ELSE 0 END)/10000.0 AS m_gs,
+                    SUM(CASE WHEN sign_date BETWEEN :fy_start    AND :today THEN gross_sign ELSE 0 END)/10000.0 AS fy_gs
+                FROM fact_signing fs {sign_join}
+                WHERE {s_rbac} AND {s_uf}
+                GROUP BY {gs_bucket}
+            ),
+            refund_agg AS (
+                SELECT
+                    {rf_bucket} AS bucket,
+                    SUM(CASE WHEN refund_date=:yesterday THEN gross_refund ELSE 0 END)/10000.0 AS d_rf,
+                    SUM(CASE WHEN refund_date BETWEEN :week_start  AND :today THEN gross_refund ELSE 0 END)/10000.0 AS w_rf,
+                    SUM(CASE WHEN refund_date BETWEEN :month_start AND :today THEN gross_refund ELSE 0 END)/10000.0 AS m_rf,
+                    SUM(CASE WHEN refund_date BETWEEN :fy_start    AND :today THEN gross_refund ELSE 0 END)/10000.0 AS fy_rf
+                FROM fact_refund rf {refund_join}
+                WHERE {rf_rbac} AND {rf_uf}
+                GROUP BY {rf_bucket}
+            )
+            SELECT
+                COALESCE(s.bucket, r.bucket) AS name,
+                COALESCE(s.d_gs,  0) AS d_gs,  COALESCE(r.d_rf,  0) AS d_rf,
+                COALESCE(s.w_gs,  0) AS w_gs,  COALESCE(r.w_rf,  0) AS w_rf,
+                COALESCE(s.m_gs,  0) AS m_gs,  COALESCE(r.m_rf,  0) AS m_rf,
+                COALESCE(s.fy_gs, 0) AS fy_gs, COALESCE(r.fy_rf, 0) AS fy_rf
+            FROM sign_agg s FULL OUTER JOIN refund_agg r ON s.bucket = r.bucket
+            ORDER BY (COALESCE(s.fy_gs,0) - COALESCE(r.fy_rf,0)) DESC, name
+        """
+
+    # 条线维度: 直接按 fact_signing.line / fact_refund.line 分组
+    rc_line_rows = (await db.execute(text(_rc_sql("fs.line", "rf.line")), params)).mappings().all()
+
+    # 业务板块维度: 经 secondary_group_advisor → dim_group_dept.biz_block 反查后分组
+    # (与 SCOPED 权限的 biz_block 反查路径同源 — 故权限设定一致)
+    rc_team_rows = (await db.execute(text(_rc_sql(
+        "dgd_s.biz_block", "dgd_r.biz_block",
+        "LEFT JOIN dim_group_dept dgd_s ON fs.secondary_group_advisor = dgd_s.secondary_group",
+        "LEFT JOIN dim_group_dept dgd_r ON rf.secondary_group_advisor = dgd_r.secondary_group",
+    )), params)).mappings().all()
+
+    def _rc_period(rows, gs_key, rf_key):
+        out = []
+        for r in rows:
+            gs = float(r[gs_key] or 0); rf = float(r[rf_key] or 0)
+            out.append({
+                "name":   r["name"] or "未分类",
+                "gross":  safe_round(gs, 2),
+                "refund": safe_round(rf, 2),
+                "net":    safe_round(gs - rf, 2),
+            })
+        return out
+
+    def _rc_pack(rows):
+        return {
+            "daily":   _rc_period(rows, "d_gs",  "d_rf"),
+            "weekly":  _rc_period(rows, "w_gs",  "w_rf"),
+            "monthly": _rc_period(rows, "m_gs",  "m_rf"),
+            "fiscal":  _rc_period(rows, "fy_gs", "fy_rf"),
+        }
+
+    region_comparison = {
+        "line": _rc_pack(rc_line_rows),
+        "team": _rc_pack(rc_team_rows),
+    }
+
     fund_obj = {"total_unarchived": t_ua, "total_unconfirmed": t_uc, "departments": fund_depts}
 
     return {
@@ -701,6 +800,7 @@ async def build_daily_report(
                             "target": safe_round(fy_target,2), "completion_rate": _cr(fy_net,fy_target), "gap": _gap(fy_net,fy_target)},
         },
         "fund_warning": fund_obj, "potential": fund_obj,
+        "region_comparison": region_comparison,
         "advisor_net_sign": [
             {"rank":i+1,"name":r["name"],"net_sign":safe_round(float(r["net_sign"] or 0),2),
              "gross_sign":safe_round(float(r["gross_sign"] or 0),2),"refund":safe_round(float(r["refund"] or 0),2),

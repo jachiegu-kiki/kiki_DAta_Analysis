@@ -545,7 +545,41 @@ function kCard(lbl, tag, val, sub, bdgs, extra) {
     + '<div class="kc-bd">' + bdgs.join('') + '</div>' + extra + '</div>';
 }
 
-/* ═══ ETL 同步触发 ═══ */
+/* ═══ ETL 同步触发 (v2 — 2026-04-30)
+   第一性原理: 用戶點擊前需要兩個信息決策——(1) 後端是否正在跑（避免重複觸發）;
+              (2) 上次成功完成是何時（決定是否需要再次觸發）。
+   逆向思維: 不從「點擊就 POST」出發，而從「點擊前先預檢狀態」出發。
+   奧卡姆剃刀: 時區轉換用瀏覽器原生 Intl.DateTimeFormat({timeZone:'Asia/Shanghai'})，
+              零依賴；後端只返 UTC ISO，前端負責顯示。
+   ─────────────────────────────────────────────────────────── */
+
+// UTC ISO → 上海時區人類可讀格式（"2026-04-30 18:25:33 (上海)"）
+function fmtShanghai(isoUtc) {
+  if (!isoUtc) return null;
+  try {
+    var d = new Date(isoUtc);
+    if (isNaN(d.getTime())) return null;
+    var parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year:  'numeric', month:  '2-digit', day:    '2-digit',
+      hour:  '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
+    }).formatToParts(d);
+    var lookup = {};
+    parts.forEach(function(p) { lookup[p.type] = p.value; });
+    return lookup.year + '-' + lookup.month + '-' + lookup.day + ' '
+         + lookup.hour + ':' + lookup.minute + ':' + lookup.second + ' (上海)';
+  } catch(e) { return null; }
+}
+
+async function fetchEtlStatus() {
+  try {
+    var res = await fetch(API + '/api/v1/etl/status', { credentials: 'same-origin' });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch(e) { return null; }
+}
+
 async function triggerETL() {
   var btn = $('btn-etl'), txt = $('etl-txt');
   if (btn.classList.contains('running')) return;
@@ -554,7 +588,41 @@ async function triggerETL() {
     alert('此操作僅限系統管理員');
     return;
   }
-  if (!confirm('确认执行数据同步（ETL）？\n此操作将从 Excel 数据源重新清洗并写入数据库。')) return;
+
+  // ─── 1. 預檢後端狀態 ───
+  var status = await fetchEtlStatus();
+  if (status && status.running) {
+    var startedSh = fmtShanghai(status.started_at) || '未知時間';
+    var by = status.triggered_by ? '\n觸發人：' + status.triggered_by : '';
+    alert('⏳ ETL 正在後端執行中，請勿重複觸發。\n\n本次開始時間：' + startedSh + by
+        + '\n\n（請等待當前任務結束後再操作）');
+    return;
+  }
+
+  // ─── 2. 顯示上次完成時間 + 二次確認 ───
+  var lastSh = status ? fmtShanghai(status.completed_at) : null;
+  var lastLine;
+  if (lastSh) {
+    var statusTag = '';
+    if (status && status.last_status === 'failed')  statusTag = '（上次失敗）';
+    if (status && status.last_status === 'timeout') statusTag = '（上次超時）';
+    var elapsed = (status && status.elapsed_seconds != null)
+                ? '，耗時 ' + Number(status.elapsed_seconds).toFixed(1) + ' 秒' : '';
+    lastLine = '上次成功完成：' + lastSh + elapsed + statusTag;
+  } else if (status && status.last_status && status.last_status !== 'success') {
+    var lastErr = status.last_error ? '\n失敗原因：' + status.last_error.slice(0, 200) : '';
+    lastLine = '尚無成功完成記錄（上次狀態：' + status.last_status + '）' + lastErr;
+  } else {
+    lastLine = '尚無同步記錄（首次執行）';
+  }
+
+  if (!confirm('确认执行数据同步（ETL）？\n\n' + lastLine
+             + '\n\n此操作将从 Excel 数据源重新清洗并写入数据库，'
+             + '預計耗時 1-5 分鐘，期間請勿關閉頁面或重複點擊。')) {
+    return;
+  }
+
+  // ─── 3. 執行 ───
   btn.classList.add('running');
   txt.textContent = '同步中...';
   try {
@@ -567,8 +635,22 @@ async function triggerETL() {
       txt.textContent = '✓ 完成';
       setTimeout(function(){ txt.textContent = '同步数据'; btn.classList.remove('running'); }, 2500);
       await fetchReport(origExecDate);
+    } else if (res.status === 409) {
+      // v4: 競態防御 — 預檢後到 POST 之間有人搶先觸發
+      var d = data && data.detail;
+      var msg = '⏳ ETL 已被其他請求觸發，請稍後重試';
+      if (d && typeof d === 'object' && d.started_at) {
+        msg += '\n\n本次開始時間：' + (fmtShanghai(d.started_at) || d.started_at);
+        if (d.triggered_by) msg += '\n觸發人：' + d.triggered_by;
+      }
+      alert(msg);
+      txt.textContent = '同步数据'; btn.classList.remove('running');
     } else {
-      alert('ETL 执行失败: ' + (data.detail || '未知错误'));
+      var detail = data && data.detail;
+      var errMsg = (typeof detail === 'string') ? detail
+                 : (detail && detail.message)   ? detail.message
+                 : '未知错误';
+      alert('ETL 执行失败: ' + errMsg);
       txt.textContent = '同步数据'; btn.classList.remove('running');
     }
   } catch(e) {
@@ -599,7 +681,7 @@ function renderAll(resetExp) {
 function renderPay() {
   var k = RAW.kpi_payment;
   $('kpi-pay').innerHTML =
-    kCard('今日收款','DAILY',k.daily.value,null,[bdg('日环比 '+P(k.daily.wow_pct),clsI(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),clsI(k.daily.yoy_pct))])
+    kCard('昨日收款','DAILY',k.daily.value,null,[bdg('日环比 '+P(k.daily.wow_pct),clsI(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),clsI(k.daily.yoy_pct))])
     +kCard('本周收款','WEEKLY',k.weekly.value,null,[bdg('周环比 '+P(k.weekly.wow_pct),clsI(k.weekly.wow_pct)),bdg('同比 '+P(k.weekly.yoy_pct),clsI(k.weekly.yoy_pct))])
     +kCard('本月收款','MTD',k.monthly.value,null,[bdg('同比 '+P(k.monthly.yoy_pct),clsI(k.monthly.yoy_pct)),bdg('月环比 '+P(k.monthly.mom_pct),clsI(k.monthly.mom_pct))])
     +kCard('财年收款','FISCAL',k.fiscal_year.value,null,[bdg('同比 '+P(k.fiscal_year.yoy_pct),clsI(k.fiscal_year.yoy_pct))]);
@@ -608,7 +690,7 @@ function renderPay() {
 function renderSign() {
   var k = RAW.kpi_signing, h = RAW.header;
   $('kpi-sign').innerHTML =
-    kCard('今日净签','DAILY',k.daily.value,'毛签 '+N(k.daily.gross_sign)+' / 退费 '+N(k.daily.refund),[bdg('日环比 '+P(k.daily.wow_pct),cls(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),cls(k.daily.yoy_pct))])
+    kCard('昨日净签','DAILY',k.daily.value,'毛签 '+N(k.daily.gross_sign)+' / 退费 '+N(k.daily.refund),[bdg('日环比 '+P(k.daily.wow_pct),cls(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),cls(k.daily.yoy_pct))])
     +kCard('本周净签','WEEKLY',k.weekly.value,'毛签 '+N(k.weekly.gross_sign)+' / 退费 '+N(k.weekly.refund),[bdg('周环比 '+P(k.weekly.wow_pct),cls(k.weekly.wow_pct)),k.weekly.yoy_abs!=null?bdg('同比'+(k.weekly.yoy_abs>=0?'+':'')+N(k.weekly.yoy_abs)+'万',k.weekly.yoy_abs>=0?'up':'dn'):''])
     +kCard('本月净签','MTD',k.monthly.value,'毛签 '+N(k.monthly.gross_sign)+' / 退费 '+N(k.monthly.refund),[bdg('同比 '+P(k.monthly.yoy_pct),cls(k.monthly.yoy_pct)),bdg('月环比 '+P(k.monthly.mom_pct),cls(k.monthly.mom_pct))],pgHTML(k.monthly.value,k.monthly.target,h.monthly_time_progress))
     +kCard('财年净签','FISCAL',k.fiscal_year.value,'毛签 '+N(k.fiscal_year.gross_sign)+' / 退费 '+N(k.fiscal_year.refund),[bdg('同比 '+P(k.fiscal_year.yoy_pct),cls(k.fiscal_year.yoy_pct)),bdg((k.fiscal_year.gap||0)<0?'已超额 '+N(Math.abs(k.fiscal_year.gap||0))+'万':'缺口 '+N(k.fiscal_year.gap||0)+'万',(k.fiscal_year.gap||0)<0?'up':'nt')],pgHTML(k.fiscal_year.value,k.fiscal_year.target,h.fiscal_time_progress));

@@ -176,3 +176,68 @@ main{max-width:1480px;margin:0 auto;padding:22px 26px 60px}.sec{margin-bottom:30
 */
 body.role-advisor #f-adv .dd-btn{pointer-events:none;opacity:.65;background:var(--grn-l);border-color:rgba(0,112,60,.35);color:var(--grn2);font-weight:600}
 body.role-advisor #f-adv .dd-list{display:none !important}
+
+/* ============================================================
+   条线 / 板块 对照看板 (REGION COMPARISON)
+   位置：净签 KPI 之后、潜在签约之前
+   ============================================================ */
+.rc-note{font-size:11.5px;color:var(--org2);padding:6px 12px;background:var(--org-l);border:1px solid rgba(244,121,32,.2);border-radius:var(--r);margin-bottom:14px;display:inline-flex;align-items:center;gap:8px}
+.rc-note-dot{width:6px;height:6px;border-radius:50%;background:var(--org);flex-shrink:0}
+.rc-tabs{display:flex;gap:4px;margin-bottom:14px;background:var(--white);border:1.5px solid var(--bd);border-radius:8px;padding:4px;width:fit-content}
+.rc-tab{padding:8px 22px;font-size:12.5px;color:var(--t2);cursor:pointer;border-radius:5px;user-select:none;transition:all .15s;font-weight:500;font-family:var(--sans)}
+.rc-tab:hover{color:var(--grn2);background:var(--s1)}
+.rc-tab.on{background:var(--grn);color:#fff;box-shadow:0 1px 3px var(--grn-m)}
+.rc-pair-wrap{overflow-x:auto}
+.rc-pair-wrap::-webkit-scrollbar{height:6px}
+.rc-pair-wrap::-webkit-scrollbar-track{background:var(--s2);border-radius:3px}
+.rc-pair-wrap::-webkit-scrollbar-thumb{background:var(--bd2);border-radius:3px}
+.rc-pair{display:grid;grid-template-columns:1fr 1fr;gap:12px;min-width:700px}
+.rc-card{background:var(--white);border:1.5px solid var(--bd);border-radius:var(--r2);overflow:hidden;transition:box-shadow .2s}
+.rc-card:hover{box-shadow:var(--shadow-sm)}
+.rc-card-hd{background:var(--grn2);color:#fff;padding:9px 14px;display:flex;align-items:center;gap:10px;font-size:12.5px;font-weight:600;letter-spacing:.5px}
+.rc-badge{font-family:var(--mono);font-size:10px;padding:2.5px 8px;border-radius:3px;letter-spacing:.5px;font-weight:600}
+.rc-badge.line{background:rgba(232,176,85,.28);color:#ffd58a;border:1px solid rgba(232,176,85,.45)}
+.rc-badge.team{background:rgba(85,176,232,.28);color:#a8dcf5;border:1px solid rgba(85,176,232,.45)}
+.rc-card-name{font-weight:700}
+.rc-card-sub{margin-left:auto;font-size:11px;color:rgba(255,255,255,.72);font-weight:400}
+.rc-tbl{width:100%;border-collapse:collapse;table-layout:fixed}
+.rc-tbl col.cat{width:78px}
+.rc-tbl thead .grp{background:var(--s1);color:var(--t1);font-size:11px;font-weight:700;letter-spacing:1.5px;padding:7px 0;text-align:center;border-bottom:1px solid var(--bd)}
+.rc-tbl thead .grp.g2{background:var(--s2);border-left:2px solid var(--bd)}
+.rc-tbl thead .col-cat{background:var(--grn2);color:#fff;font-size:11px;font-weight:600;padding:6px 12px;text-align:left;letter-spacing:.5px;vertical-align:middle}
+.rc-tbl thead .sub-th{font-size:11px;color:var(--t2);font-weight:600;padding:6px 6px;text-align:right;background:var(--white);border-bottom:1.5px solid var(--bd)}
+.rc-tbl thead .sub-th.start{border-left:2px solid var(--bd)}
+.rc-tbl tbody td{padding:8px 8px;font-size:12.5px;border-bottom:1px solid var(--s2);text-align:right;font-family:var(--mono);font-weight:500;color:var(--t0)}
+.rc-tbl tbody td.cat{text-align:left;font-family:var(--sans);color:var(--t1);font-weight:600;padding-left:14px;font-size:12.5px}
+.rc-tbl tbody td.start{border-left:2px solid var(--s2)}
+.rc-tbl tbody tr:hover td{background:var(--grn-l)}
+.rc-tbl tbody tr:last-child td{border-bottom:none}
+.rc-tbl .ref{color:var(--org2)}
+.rc-tbl .net{color:var(--grn);font-weight:700}
+.rc-tbl tfoot td{background:var(--grn2);color:#fff;font-weight:700;border-top:2px solid var(--grn3);font-family:var(--mono);font-size:12.5px;padding:9px 8px;text-align:right}
+.rc-tbl tfoot td.cat{font-family:var(--sans);text-align:left;padding-left:14px;letter-spacing:1px}
+.rc-tbl tfoot td.start{border-left:2px solid rgba(255,255,255,.25)}
+.rc-tbl tfoot td .ref,.rc-tbl tfoot td .net{color:#fff}
+
+/* 平板：保留并排，仅压缩内边距 */
+@media(max-width:1100px){
+  .rc-pair{min-width:680px}
+  .rc-tbl tbody td,.rc-tbl tfoot td{padding:7px 5px;font-size:11.5px}
+  .rc-tbl col.cat{width:64px}
+}
+/* 手机：纵向堆叠两张表 */
+@media(max-width:760px){
+  .rc-pair{grid-template-columns:1fr;min-width:0}
+  .rc-pair-wrap{overflow-x:visible}
+  .rc-card-sub{font-size:10.5px}
+  .rc-tabs{width:100%;justify-content:stretch}
+  .rc-tab{flex:1;text-align:center;padding:9px 10px;font-size:12px}
+  .rc-tbl col.cat{width:62px}
+  .rc-tbl thead .col-cat{font-size:10.5px;padding:6px 8px}
+  .rc-tbl thead .grp{font-size:10.5px;letter-spacing:.8px}
+  .rc-tbl thead .sub-th{font-size:10px;padding:5px 4px}
+  .rc-tbl tbody td{font-size:11px;padding:7px 4px}
+  .rc-tbl tbody td.cat{font-size:11.5px;padding-left:10px}
+  .rc-tbl tfoot td{font-size:11px;padding:7px 4px}
+  .rc-tbl tfoot td.cat{padding-left:10px}
+}

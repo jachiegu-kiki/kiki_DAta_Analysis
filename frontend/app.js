@@ -675,7 +675,7 @@ function renderAll(resetExp) {
   if ($('hd-date-m')) $('hd-date-m').textContent = h.execution_date;
   if ($('hd-mth-m')) $('hd-mth-m').textContent = N(h.monthly_time_progress) + '%';
   if ($('hd-fy-m')) $('hd-fy-m').textContent = N(h.fiscal_time_progress) + '%';
-  renderPay(); renderSign(); renderPotential(); renderAdvisors();
+  renderPay(); renderSign(); renderRegionComparison(); renderPotential(); renderAdvisors();
 }
 
 function renderPay() {
@@ -772,3 +772,148 @@ function renderAdvisors() {
 }
 
 function tglAdv(w) { if (w==='ns') nsAll=!nsAll; else mmAll=!mmAll; renderAdvisors(); }
+
+/* ============================================================
+ * 条线 / 板块 对照看板 (REGION COMPARISON)
+ * ------------------------------------------------------------
+ * 期望后端在 daily-report 接口的 RAW 中追加字段 region_comparison：
+ *
+ *   RAW.region_comparison = {
+ *     line: {                                  // 按合同所属条线归集
+ *       daily:   [ { name, gross, refund, net }, x4 行 ],
+ *       weekly:  [ ..., x4 行 ],
+ *       monthly: [ ..., x4 行 ],
+ *       fiscal:  [ ..., x4 行 ]
+ *     },
+ *     team: {                                  // 按签约顾问所属团队归集
+ *       daily:   [ ..., x4 行 ],
+ *       weekly:  [ ..., x4 行 ],
+ *       monthly: [ ..., x4 行 ],
+ *       fiscal:  [ ..., x4 行 ]
+ *     }
+ *   }
+ *
+ * 每个数组固定 4 行，name ∈ { '大北美', '英国', '澳新', '欧亚' }
+ * gross/refund/net 单位均为「万」，refund 为正数表示退费金额
+ * 权限控制：后端按当前用户角色仅返回其可见行（如英国权限用户只返回英国 1 行）
+ * ============================================================ */
+
+// 当前选中 Tab：'dw' = 日&周, 'mfy' = 月&财年
+var RC_TAB = 'mfy';
+
+// 兜底 mock 数据：在后端尚未实装 region_comparison 字段时使用
+// 接口对接后可删除该常量及 || RC_MOCK_DATA 兜底
+var RC_MOCK_DATA = {
+  line: {
+    daily:   [{name:'大北美',gross:16.35,refund:6.61,net:9.74},  {name:'英国',gross:7.59,refund:1.48,net:6.11}, {name:'澳新',gross:9.34,refund:0.64,net:8.70}, {name:'欧亚',gross:15.12,refund:1.32,net:13.80}],
+    weekly:  [{name:'大北美',gross:81.77,refund:33.03,net:48.74},{name:'英国',gross:37.97,refund:7.40,net:30.57},{name:'澳新',gross:46.69,refund:3.18,net:43.51},{name:'欧亚',gross:75.59,refund:6.62,net:68.97}],
+    monthly: [{name:'大北美',gross:327.09,refund:132.13,net:194.96},{name:'英国',gross:151.89,refund:29.60,net:122.29},{name:'澳新',gross:186.76,refund:12.73,net:174.03},{name:'欧亚',gross:302.37,refund:26.46,net:275.91}],
+    fiscal:  [{name:'大北美',gross:1144.82,refund:462.46,net:682.36},{name:'英国',gross:531.62,refund:103.60,net:428.02},{name:'澳新',gross:653.66,refund:44.56,net:609.10},{name:'欧亚',gross:1058.30,refund:92.61,net:965.69}]
+  },
+  team: {
+    daily:   [{name:'大北美',gross:15.80,refund:6.95,net:8.85}, {name:'英国',gross:7.85,refund:1.50,net:6.35}, {name:'澳新',gross:9.10,refund:0.75,net:8.35}, {name:'欧亚',gross:15.65,refund:0.85,net:14.80}],
+    weekly:  [{name:'大北美',gross:79.20,refund:35.10,net:44.10},{name:'英国',gross:38.50,refund:7.45,net:31.05},{name:'澳新',gross:45.80,refund:3.30,net:42.50},{name:'欧亚',gross:78.52,refund:4.38,net:74.14}],
+    monthly: [{name:'大北美',gross:320.50,refund:138.20,net:182.30},{name:'英国',gross:155.20,refund:30.10,net:125.10},{name:'澳新',gross:178.30,refund:11.90,net:166.40},{name:'欧亚',gross:314.11,refund:20.72,net:293.39}],
+    fiscal:  [{name:'大北美',gross:1115.70,refund:485.80,net:629.90},{name:'英国',gross:540.80,refund:106.20,net:434.60},{name:'澳新',gross:631.20,refund:41.32,net:589.88},{name:'欧亚',gross:1100.69,refund:69.90,net:1030.79}]
+  }
+};
+
+// 时段 key → 中文标签
+var RC_PERIOD_LABEL = { daily:'日度', weekly:'周度', monthly:'月度', fiscal:'财年度' };
+// Tab → 两个时段 key
+var RC_SET = { dw:['daily','weekly'], mfy:['monthly','fiscal'] };
+
+// 数字格式化：保留 2 位小数
+function rcFmt(n) { return (Number(n) || 0).toFixed(2); }
+
+// 计算合计行：[gross_sum, refund_sum, net_sum]
+function rcSumRows(rows) {
+  var s = [0, 0, 0];
+  (rows || []).forEach(function(r) { s[0] += (+r.gross||0); s[1] += (+r.refund||0); s[2] += (+r.net||0); });
+  return s;
+}
+
+// 构造一张大表 HTML（条线 or 板块，含两个时段合并表头）
+function rcBuildCard(view, p1, p2, data) {
+  var isLine = (view === 'line');
+  var badge  = isLine
+    ? '<span class="rc-badge line">LINE</span>'
+    : '<span class="rc-badge team">TEAM</span>';
+  var name   = isLine ? '条线维度' : '业务板块维度';
+  var sub    = isLine ? '按合同所属条线归集' : '按签约顾问所属团队归集';
+
+  var r1 = (data[view] && data[view][p1]) || [];
+  var r2 = (data[view] && data[view][p2]) || [];
+  var s1 = rcSumRows(r1);
+  var s2 = rcSumRows(r2);
+
+  // 按 4 个固定分类对齐：r1[i] 与 r2[i] 应同名（后端保证顺序一致）
+  // 若后端权限过滤导致某行缺失，按前端兜底逻辑用占位
+  var maxLen = Math.max(r1.length, r2.length, 0);
+  var bodyHtml = '';
+  for (var i = 0; i < maxLen; i++) {
+    var a = r1[i] || { name: (r2[i]||{}).name || '', gross:0, refund:0, net:0 };
+    var b = r2[i] || { name: (r1[i]||{}).name || '', gross:0, refund:0, net:0 };
+    bodyHtml += '<tr>'
+      + '<td class="cat">' + a.name + '</td>'
+      + '<td>' + rcFmt(a.gross)  + '</td>'
+      + '<td class="ref">' + rcFmt(a.refund) + '</td>'
+      + '<td class="net">' + rcFmt(a.net)    + '</td>'
+      + '<td class="start">' + rcFmt(b.gross)  + '</td>'
+      + '<td class="ref">'   + rcFmt(b.refund) + '</td>'
+      + '<td class="net">'   + rcFmt(b.net)    + '</td>'
+      + '</tr>';
+  }
+
+  return '<div class="rc-card">'
+    + '<div class="rc-card-hd">' + badge + '<span class="rc-card-name">' + name + '</span><span class="rc-card-sub">' + sub + '</span></div>'
+    + '<table class="rc-tbl">'
+    +   '<colgroup><col class="cat"><col><col><col><col><col><col></colgroup>'
+    +   '<thead>'
+    +     '<tr>'
+    +       '<td class="col-cat" rowspan="2">分类</td>'
+    +       '<td class="grp" colspan="3">' + RC_PERIOD_LABEL[p1] + '</td>'
+    +       '<td class="grp g2" colspan="3">' + RC_PERIOD_LABEL[p2] + '</td>'
+    +     '</tr>'
+    +     '<tr>'
+    +       '<th class="sub-th">毛签</th><th class="sub-th">退费</th><th class="sub-th">净签</th>'
+    +       '<th class="sub-th start">毛签</th><th class="sub-th">退费</th><th class="sub-th">净签</th>'
+    +     '</tr>'
+    +   '</thead>'
+    +   '<tbody>' + bodyHtml + '</tbody>'
+    +   '<tfoot>'
+    +     '<tr>'
+    +       '<td class="cat">合 计</td>'
+    +       '<td>' + rcFmt(s1[0]) + '</td><td><span class="ref">' + rcFmt(s1[1]) + '</span></td><td><span class="net">' + rcFmt(s1[2]) + '</span></td>'
+    +       '<td class="start">' + rcFmt(s2[0]) + '</td><td><span class="ref">' + rcFmt(s2[1]) + '</span></td><td><span class="net">' + rcFmt(s2[2]) + '</span></td>'
+    +     '</tr>'
+    +   '</tfoot>'
+    + '</table>'
+    + '</div>';
+}
+
+// 主渲染函数：按当前 Tab 渲染左右两张大表
+function renderRegionComparison() {
+  var pair = $('rc-pair');
+  if (!pair) return;
+  if (!RAW) return;
+
+  var data = RAW.region_comparison || RC_MOCK_DATA;
+  var periods = RC_SET[RC_TAB] || RC_SET.mfy;
+
+  pair.innerHTML =
+      rcBuildCard('line', periods[0], periods[1], data)
+    + rcBuildCard('team', periods[0], periods[1], data);
+}
+
+// Tab 切换 handler（onclick 直接调用）
+function rcSwitchTab(setKey) {
+  if (!RC_SET[setKey]) return;
+  RC_TAB = setKey;
+  var tabs = document.querySelectorAll('#rc-tabs .rc-tab');
+  for (var i = 0; i < tabs.length; i++) {
+    if (tabs[i].getAttribute('data-set') === setKey) tabs[i].classList.add('on');
+    else tabs[i].classList.remove('on');
+  }
+  renderRegionComparison();
+}

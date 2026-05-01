@@ -182,8 +182,10 @@ function optsObj(arr) { return arr.map(function(o){ return o.value; }); }
 /* ═══ 构建筛选器选项 ═══ */
 function buildOptions() {
   if (!RAW) return;
-  var ed = RAW.header.execution_date || new Date().toISOString().slice(0,10);
-  var curY = parseInt(ed.slice(0,4)), curM = parseInt(ed.slice(5,7));
+  var nowDate = new Date();
+  nowDate.setDate(nowDate.getDate() - 1);
+  var now = nowDate.toISOString().slice(0,10);
+  var nowY = parseInt(now.slice(0,4)), nowM = parseInt(now.slice(5,7));
 
   // 按条线筛选
   ddSetItems('f-line', FO.lines || []);
@@ -214,7 +216,7 @@ function buildOptions() {
   }
 
   // 财年
-  var fyYear = curM >= 6 ? curY + 1 : curY;
+  var fyYear = nowM >= 6 ? nowY + 1 : nowY;
   var fyArr = [];
   for (var y = fyYear; y >= fyYear - 3; y--) {
     fyArr.push('FY' + y + (y === fyYear ? '（当前）' : ''));
@@ -223,8 +225,8 @@ function buildOptions() {
 
   // 年月
   var ymArr = [];
-  for (var yy = curY; yy >= curY - 1; yy--) {
-    var maxM = yy === curY ? curM : 12;
+  for (var yy = nowY; yy >= nowY - 1; yy--) {
+    var maxM = yy === nowY ? nowM : 12;
     for (var mm = maxM; mm >= 1; mm--) {
       var v = yy + '' + (mm < 10 ? '0' : '') + mm;
       ymArr.push(v);
@@ -235,7 +237,7 @@ function buildOptions() {
   // 财周
   var fwNum = RAW.header.fiscal_week_number;
   if (!fwNum) {
-    var _d = new Date(ed), _fy = curM >= 6 ? new Date(curY,5,1) : new Date(curY-1,5,1);
+    var _d = new Date(now), _fy = nowM >= 6 ? new Date(nowY,5,1) : new Date(nowY-1,5,1);
     var _dow = _fy.getDay(), _dts = _dow === 0 ? 0 : 7 - _dow;
     var _fwe = new Date(_fy); _fwe.setDate(_fwe.getDate() + _dts);
     fwNum = _d <= _fwe ? 1 : 2 + Math.floor((_d - _fwe - 86400000) / 604800000);

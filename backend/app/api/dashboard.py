@@ -27,7 +27,10 @@ async def daily_report(
     current_user: AuthUser = Depends(get_current_user),
 ):
     # 今日是用昨日數據, 因為今日不會有完整數據
-    today = execution_date or date.today() - timedelta(days=1)
+    today = execution_date or date.today()
+    if today >= date.today() :
+        today = date.today() - timedelta(days=1)
+
     _split = lambda s: [x.strip() for x in s.split(",") if x.strip()] if s else None
 
     report = await build_daily_report(

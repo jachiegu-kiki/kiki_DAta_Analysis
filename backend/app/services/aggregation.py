@@ -642,7 +642,7 @@ async def build_daily_report(
         all_advisors = [advisor_name]
 
     # ── 财周 ──
-    current_fw = get_fiscal_week_number(today)
+    current_fw = get_fiscal_week_number(date.today() - timedelta(days=1))
 
     import calendar
     month_days = calendar.monthrange(today.year, today.month)[1]

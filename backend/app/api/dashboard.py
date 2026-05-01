@@ -1,5 +1,5 @@
 # backend/app/api/dashboard.py
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,7 +26,8 @@ async def daily_report(
     db: AsyncSession = Depends(get_db),
     current_user: AuthUser = Depends(get_current_user),
 ):
-    today = execution_date or date.today()
+    # 今日是用昨日數據, 因為今日不會有完整數據
+    today = execution_date or date.today() - timedelta(days=1)
     _split = lambda s: [x.strip() for x in s.split(",") if x.strip()] if s else None
 
     report = await build_daily_report(

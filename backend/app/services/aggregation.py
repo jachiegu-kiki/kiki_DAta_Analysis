@@ -14,13 +14,7 @@ v5.2 變更 (2026-04):
                 统一空值, 保证总和与 KPI 完全相符. 仅增不改, 不影响任何既有逻辑.
 
 v5.1 變更 (2026-04):
-  [語義平移] 「今日收款」「今日凈簽」KPI 由 today 改為 yesterday。
-    第一性原理: 在每日 ETL 系統中，「最近一個完整數據日」是昨天，
-    而非當天（當日 ETL 未必執行，或當日交易尚未結清）。
-    奧卡姆剃刀: 只平移 daily 部分的 cur/wow/yoy 三個日期條件，
-    周/月/財年 KPI、advisor 排行、潛簽快照、target 計算均不動。
-    新增 params['d_before_yesterday'] 用於 daily_wow 對比基準。
-    header.execution_date 仍為 today（系統執行日），不影響財周/財年口徑。
+  [語義平移] header.execution_date 為 yesterday（系統執行日）。
 
 v5.0 變更（相对 v4.2 / v4.3）:
   [Fix P1] rbac_receipt MANAGER 分支误引用 fact_receipt.secondary_group_advisor
@@ -103,9 +97,6 @@ async def build_daily_report(
     week_start  = get_fiscal_week_start(today)
     month_start = today.replace(day=1)
     yesterday   = today - timedelta(days=1)
-
-    # v5.1: daily KPI 平移到 yesterday，daily_wow 對比基準需相應前推到「前天」
-    d_before_yesterday = today - timedelta(days=2)
 
     yoy_today       = get_prev_year_date(today)
     yoy_yesterday   = get_prev_year_date(yesterday)
@@ -369,7 +360,6 @@ async def build_daily_report(
 
     params = {
         "today": today, "yesterday": yesterday,
-        "d_before_yesterday": d_before_yesterday,  # v5.1: daily_wow 對比基準（前天）
         "week_start": week_start,
         "month_start": month_start, "fy_start": fy_start,
         "yoy_today": yoy_today, "yoy_yesterday": yoy_yesterday,
@@ -406,13 +396,11 @@ async def build_daily_report(
     fund_uf = ufilter_fund("fs")
 
     # ── 收款 KPI ──
-    # v5.1: daily_cur 改為 yesterday；daily_wow 對比前天；daily_yoy 對比去年同昨日。
-    #       週/月/財年條件保持不變（仍然以 today 作為區間上界）。
     pr = (await db.execute(text(f"""
         SELECT
-            SUM(CASE WHEN receipt_date=:yesterday AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS daily_cur,
-            SUM(CASE WHEN receipt_date=:d_before_yesterday AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS daily_wow,
-            SUM(CASE WHEN receipt_date=:yoy_yesterday AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS daily_yoy,
+            SUM(CASE WHEN receipt_date=:today AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS daily_cur,
+            SUM(CASE WHEN receipt_date=:yesterday AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS daily_wow,
+            SUM(CASE WHEN receipt_date=:yoy_today AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS daily_yoy,
             SUM(CASE WHEN receipt_date BETWEEN :week_start AND :today AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS weekly_cur,
             SUM(CASE WHEN receipt_date BETWEEN :prev_week_start AND :prev_week_end AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS weekly_wow,
             SUM(CASE WHEN receipt_date BETWEEN :yoy_week_start AND :yoy_today AND {r_rbac} AND {r_uf} THEN amount ELSE 0 END)/10000.0 AS weekly_yoy,
@@ -425,13 +413,12 @@ async def build_daily_report(
     """), params)).mappings().one()
 
     # ── 净签 KPI ──
-    # v5.1: 同收款 — d_gs/d_rf 改為 yesterday；d_wow_* 對比前天；d_yoy_* 對比去年同昨日。
     sr = (await db.execute(text(f"""
         WITH sign_agg AS (
             SELECT
-                SUM(CASE WHEN sign_date=:yesterday THEN gross_sign ELSE 0 END) AS d_gs,
-                SUM(CASE WHEN sign_date=:d_before_yesterday THEN gross_sign ELSE 0 END) AS d_wow_gs,
-                SUM(CASE WHEN sign_date=:yoy_yesterday THEN gross_sign ELSE 0 END) AS d_yoy_gs,
+                SUM(CASE WHEN sign_date=:today THEN gross_sign ELSE 0 END) AS d_gs,
+                SUM(CASE WHEN sign_date=:yesterday THEN gross_sign ELSE 0 END) AS d_wow_gs,
+                SUM(CASE WHEN sign_date=:yoy_today THEN gross_sign ELSE 0 END) AS d_yoy_gs,
                 SUM(CASE WHEN sign_date BETWEEN :week_start AND :today THEN gross_sign ELSE 0 END) AS w_gs,
                 SUM(CASE WHEN sign_date BETWEEN :prev_week_start AND :prev_week_end THEN gross_sign ELSE 0 END) AS w_wow_gs,
                 SUM(CASE WHEN sign_date BETWEEN :yoy_week_start AND :yoy_today THEN gross_sign ELSE 0 END) AS w_yoy_gs,
@@ -444,9 +431,9 @@ async def build_daily_report(
         ),
         refund_agg AS (
             SELECT
-                SUM(CASE WHEN refund_date=:yesterday THEN gross_refund ELSE 0 END) AS d_rf,
-                SUM(CASE WHEN refund_date=:d_before_yesterday THEN gross_refund ELSE 0 END) AS d_wow_rf,
-                SUM(CASE WHEN refund_date=:yoy_yesterday THEN gross_refund ELSE 0 END) AS d_yoy_rf,
+                SUM(CASE WHEN refund_date=:today THEN gross_refund ELSE 0 END) AS d_rf,
+                SUM(CASE WHEN refund_date=:yesterday THEN gross_refund ELSE 0 END) AS d_wow_rf,
+                SUM(CASE WHEN refund_date=:yoy_today THEN gross_refund ELSE 0 END) AS d_yoy_rf,
                 SUM(CASE WHEN refund_date BETWEEN :week_start AND :today THEN gross_refund ELSE 0 END) AS w_rf,
                 SUM(CASE WHEN refund_date BETWEEN :prev_week_start AND :prev_week_end THEN gross_refund ELSE 0 END) AS w_wow_rf,
                 SUM(CASE WHEN refund_date BETWEEN :yoy_week_start AND :yoy_today THEN gross_refund ELSE 0 END) AS w_yoy_rf,
@@ -705,7 +692,7 @@ async def build_daily_report(
             WITH sign_agg AS (
                 SELECT
                     {gs_bucket} AS bucket,
-                    SUM(CASE WHEN sign_date=:yesterday THEN gross_sign ELSE 0 END)/10000.0 AS d_gs,
+                    SUM(CASE WHEN sign_date=:today THEN gross_sign ELSE 0 END)/10000.0 AS d_gs,
                     SUM(CASE WHEN sign_date BETWEEN :week_start  AND :today THEN gross_sign ELSE 0 END)/10000.0 AS w_gs,
                     SUM(CASE WHEN sign_date BETWEEN :month_start AND :today THEN gross_sign ELSE 0 END)/10000.0 AS m_gs,
                     SUM(CASE WHEN sign_date BETWEEN :fy_start    AND :today THEN gross_sign ELSE 0 END)/10000.0 AS fy_gs
@@ -716,7 +703,7 @@ async def build_daily_report(
             refund_agg AS (
                 SELECT
                     {rf_bucket} AS bucket,
-                    SUM(CASE WHEN refund_date=:yesterday THEN gross_refund ELSE 0 END)/10000.0 AS d_rf,
+                    SUM(CASE WHEN refund_date=:today THEN gross_refund ELSE 0 END)/10000.0 AS d_rf,
                     SUM(CASE WHEN refund_date BETWEEN :week_start  AND :today THEN gross_refund ELSE 0 END)/10000.0 AS w_rf,
                     SUM(CASE WHEN refund_date BETWEEN :month_start AND :today THEN gross_refund ELSE 0 END)/10000.0 AS m_rf,
                     SUM(CASE WHEN refund_date BETWEEN :fy_start    AND :today THEN gross_refund ELSE 0 END)/10000.0 AS fy_rf

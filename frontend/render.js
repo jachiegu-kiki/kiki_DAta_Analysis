@@ -77,7 +77,7 @@ function renderAll(resetExp) {
 function renderPay() {
   var k = RAW.kpi_payment;
   $('kpi-pay').innerHTML =
-    kCard('昨日收款','DAILY',k.daily.value,null,[bdg('日环比 '+P(k.daily.wow_pct),clsI(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),clsI(k.daily.yoy_pct))])
+    kCard('日收款','DAILY',k.daily.value,null,[bdg('日环比 '+P(k.daily.wow_pct),clsI(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),clsI(k.daily.yoy_pct))])
     +kCard('本周收款','WEEKLY',k.weekly.value,null,[bdg('周环比 '+P(k.weekly.wow_pct),clsI(k.weekly.wow_pct)),bdg('同比 '+P(k.weekly.yoy_pct),clsI(k.weekly.yoy_pct))])
     +kCard('本月收款','MTD',k.monthly.value,null,[bdg('同比 '+P(k.monthly.yoy_pct),clsI(k.monthly.yoy_pct)),bdg('月环比 '+P(k.monthly.mom_pct),clsI(k.monthly.mom_pct))])
     +kCard('财年收款','FISCAL',k.fiscal_year.value,null,[bdg('同比 '+P(k.fiscal_year.yoy_pct),clsI(k.fiscal_year.yoy_pct))]);
@@ -86,7 +86,7 @@ function renderPay() {
 function renderSign() {
   var k = RAW.kpi_signing, h = RAW.header;
   $('kpi-sign').innerHTML =
-    kCard('昨日净签','DAILY',k.daily.value,'毛签 '+N(k.daily.gross_sign)+' / 退费 '+N(k.daily.refund),[bdg('日环比 '+P(k.daily.wow_pct),cls(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),cls(k.daily.yoy_pct))])
+    kCard('日净签','DAILY',k.daily.value,'毛签 '+N(k.daily.gross_sign)+' / 退费 '+N(k.daily.refund),[bdg('日环比 '+P(k.daily.wow_pct),cls(k.daily.wow_pct)),bdg('同比 '+P(k.daily.yoy_pct),cls(k.daily.yoy_pct))])
     +kCard('本周净签','WEEKLY',k.weekly.value,'毛签 '+N(k.weekly.gross_sign)+' / 退费 '+N(k.weekly.refund),[bdg('周环比 '+P(k.weekly.wow_pct),cls(k.weekly.wow_pct)),k.weekly.yoy_abs!=null?bdg('同比'+(k.weekly.yoy_abs>=0?'+':'')+N(k.weekly.yoy_abs)+'万',k.weekly.yoy_abs>=0?'up':'dn'):''])
     +kCard('本月净签','MTD',k.monthly.value,'毛签 '+N(k.monthly.gross_sign)+' / 退费 '+N(k.monthly.refund),[bdg('同比 '+P(k.monthly.yoy_pct),cls(k.monthly.yoy_pct)),bdg('月环比 '+P(k.monthly.mom_pct),cls(k.monthly.mom_pct))],pgHTML(k.monthly.value,k.monthly.target,h.monthly_time_progress))
     +kCard('财年净签','FISCAL',k.fiscal_year.value,'毛签 '+N(k.fiscal_year.gross_sign)+' / 退费 '+N(k.fiscal_year.refund),[bdg('同比 '+P(k.fiscal_year.yoy_pct),cls(k.fiscal_year.yoy_pct)),bdg((k.fiscal_year.gap||0)<0?'已超额 '+N(Math.abs(k.fiscal_year.gap||0))+'万':'缺口 '+N(k.fiscal_year.gap||0)+'万',(k.fiscal_year.gap||0)<0?'up':'nt')],pgHTML(k.fiscal_year.value,k.fiscal_year.target,h.fiscal_time_progress));

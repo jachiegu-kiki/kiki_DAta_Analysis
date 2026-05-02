@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS fact_receipt (
     arrived_date    DATE,
     contract_no     VARCHAR(64)  DEFAULT '',
     advisor_name    VARCHAR(64)  DEFAULT '',
+    actual_advisor  VARCHAR(64)  DEFAULT '',
     dept            VARCHAR(64)  DEFAULT '',
     pay_method      VARCHAR(32)  DEFAULT '',
     status          VARCHAR(32)  DEFAULT '',
@@ -200,6 +201,7 @@ CREATE TABLE IF NOT EXISTS fact_fund_snapshot (
     snapshot_date   DATE         NOT NULL,
     contract_no     VARCHAR(64)  DEFAULT '',
     advisor_name    VARCHAR(64)  DEFAULT '',
+    actual_advisor  VARCHAR(64)  DEFAULT '',
     dept            VARCHAR(64)  DEFAULT '',
     secondary_group VARCHAR(64)  DEFAULT '未知部门',
     metric_type     VARCHAR(16)  NOT NULL

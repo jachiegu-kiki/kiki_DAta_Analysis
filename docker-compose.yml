@@ -20,6 +20,7 @@ services:
     container_name: qiantu_postgres
     restart: always
     environment:
+      TZ: Asia/Shanghai
       POSTGRES_DB: qiantu_finance
       POSTGRES_USER: qiantu
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}
@@ -44,6 +45,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     environment:
+      TZ: Asia/Shanghai
       DATABASE_URL: postgresql+asyncpg://qiantu:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@postgres:5432/qiantu_finance
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:?请在 .env 设置 INTERNAL_API_KEY}
       DINGTALK_WEBHOOK_URL: ${DINGTALK_WEBHOOK_URL:-}
@@ -86,6 +88,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
     environment:
+      TZ: Asia/Shanghai
       DATABASE_URL_SYNC: postgresql://qiantu:${POSTGRES_PASSWORD:?请在 .env 设置 POSTGRES_PASSWORD}@postgres:5432/qiantu_finance
       PREDATA_DIR: /data/PreData
       PULLDATA_DIR: /data/PullData

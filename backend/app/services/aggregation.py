@@ -1,7 +1,19 @@
 # backend/app/services/aggregation.py
 """
-聚合服务 v5.2
+聚合服务 v5.3
 ────────────────────────────────────────────────────────────────
+v5.3 變更 (2026-05):
+  [新增] SCOPED 維度 group_advisor_like — secondary_group_advisor 子串匹配。
+    第一性原理: scope 即「能看哪些 row」的多維謂詞；既有六維皆為等值匹配，
+                增「包含」語義須走 LIKE，**但不能改動既有 group_advisor 的等值
+                語義**（會誤傷現存 SCOPED 用戶），故新增獨立維度。
+    Occam:     僅注入 5 個觸點 (_scope_sign / _scope_sub_where /
+                scope_target_groups / params 綁定 / scope.get 讀取)，
+                全程使用 PostgreSQL 的 `LIKE ANY(:array)` + bind 參數
+                → 零 SQL injection；與 v5.1「維度間 OR」語義自動相容。
+    範例:      scope: {line: [美妍], group_advisor_like: [美研]}
+                → line='美妍' OR secondary_group_advisor LIKE '%美研%'
+
 v5.2 變更 (2026-04):
   [新增] region_comparison 字段 — "条线/板块对照"看板数据.
     第一性原理: 与 净签 KPI 同源同口径 (同 rbac、同 ufilter、同时间窗、同度量),
@@ -122,12 +134,15 @@ async def build_daily_report(
     # scope 结构: {"line": [...], "biz_block": [...], "sub_line": [...], ...}
     # 作为永久 WHERE 附加到所有查询，UI filter 在 scope 内进一步收敛。
     scope = scope or {}
-    s_line     = scope.get("line")       or None
-    s_sub_line = scope.get("sub_line")   or None
-    s_bblock   = scope.get("biz_block")  or None
-    s_gl1      = scope.get("group_l1")   or None
-    s_gadv     = scope.get("group_advisor") or None
-    s_biztype  = scope.get("biz_type")   or None
+    s_line       = scope.get("line")       or None
+    s_sub_line   = scope.get("sub_line")   or None
+    s_bblock     = scope.get("biz_block")  or None
+    s_gl1        = scope.get("group_l1")   or None
+    s_gadv       = scope.get("group_advisor") or None
+    s_gadv_like  = scope.get("group_advisor_like") or None   # v5.3: 子串匹配
+    s_biztype    = scope.get("biz_type")   or None
+    # v5.3: 預先構造 LIKE pattern 列表 — 走 PG 的 `LIKE ANY(:array)`，bind param 安全
+    s_gadv_like_pat = [f"%{p}%" for p in s_gadv_like] if s_gadv_like else None
 
     # ── RBAC (v5) ──
     # 统一口径 + 修复 P1/P2/P3:
@@ -153,6 +168,9 @@ async def build_daily_report(
                          f"(SELECT secondary_group FROM dim_group_dept WHERE primary_group = ANY(:scope_gl1))")
         if s_gadv:
             parts.append(f"{alias}.secondary_group_advisor = ANY(:scope_gadv)")
+        if s_gadv_like:
+            # v5.3: secondary_group_advisor LIKE '%pat%' 對列表中任一 pat 命中
+            parts.append(f"{alias}.secondary_group_advisor LIKE ANY(:scope_gadv_like_pat)")
         if s_biztype:
             col = "sign_biz_type" if alias == "fs" else "refund_biz_type"
             parts.append(f"{alias}.{col} = ANY(:scope_biztype)")
@@ -171,6 +189,9 @@ async def build_daily_report(
                        "(SELECT secondary_group FROM dim_group_dept WHERE primary_group = ANY(:scope_gl1))")
         if s_gadv:
             sub.append("secondary_group_advisor = ANY(:scope_gadv)")
+        if s_gadv_like:
+            # v5.3: 同 _scope_sign，用於 fact_receipt / fact_fund_snapshot 經 contract_no 回溯
+            sub.append("secondary_group_advisor LIKE ANY(:scope_gadv_like_pat)")
         if s_biztype:
             sub.append("sign_biz_type = ANY(:scope_biztype)")
         return " OR ".join(sub) if sub else ""
@@ -279,6 +300,14 @@ async def build_daily_report(
             scope_target_groups.extend(rows)
         if s_gadv:
             scope_target_groups.extend(s_gadv)
+        if s_gadv_like:
+            # v5.3: 由 dim_group_dept 反查 secondary_group LIKE 任一 pattern → 加入 target 約束
+            # 與既有 s_gadv 用 secondary_group_advisor 值直接當作 secondary_group 的做法
+            # 保持相同的近似精度（兩個欄位在組別語料上同源）。
+            rows = (await db.execute(text(
+                "SELECT secondary_group FROM dim_group_dept WHERE secondary_group LIKE ANY(:pats)"
+            ), {"pats": s_gadv_like_pat})).scalars().all()
+            scope_target_groups.extend(rows)
         if s_line or s_sub_line:
             line_clauses = []
             if s_line:     line_clauses.append("line = ANY(:sl)")
@@ -383,6 +412,7 @@ async def build_daily_report(
         "scope_bblock":   s_bblock or [],
         "scope_gl1":      s_gl1 or [],
         "scope_gadv":     s_gadv or [],
+        "scope_gadv_like_pat": s_gadv_like_pat or [],   # v5.3: LIKE pattern 列表
         "scope_biztype":  s_biztype or [],
     }
 

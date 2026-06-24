@@ -103,7 +103,7 @@ async function triggerETL() {
 
   if (!confirm('确认执行数据同步（ETL）？\n\n' + lastLine
              + '\n\n此操作将从 Excel 数据源重新清洗并写入数据库，'
-             + '預計耗時 1-5 分鐘，期間請勿關閉頁面或重複點擊。')) {
+      + '預計耗時 5-10 分鐘，期間請勿關閉頁面或重複點擊。')) {
     return;
   }
 

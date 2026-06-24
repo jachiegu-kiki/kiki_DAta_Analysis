@@ -27,8 +27,8 @@ v3 保留 (2026-04):
     見 security.py AuthUser.is_system_admin()
 """
 import asyncio
-import os
 import logging
+import os
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -122,7 +122,7 @@ async def trigger_etl(current_user: AuthUser = Depends(get_current_user)):
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=300)
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=600)
             elapsed = (datetime.now(timezone.utc) - started).total_seconds()
             stdout_text = stdout.decode("utf-8", errors="replace")[-3000:]
             stderr_text = stderr.decode("utf-8", errors="replace")[-1500:]
@@ -160,11 +160,11 @@ async def trigger_etl(current_user: AuthUser = Depends(get_current_user)):
             }
 
         except asyncio.TimeoutError:
-            logger.error("[ETL] 超時（300s）")
+            logger.error("[ETL] 超時（600s）")
             _etl_history["last_status"]     = "timeout"
-            _etl_history["last_error"]      = "ETL 執行超時（>300秒）"
-            _etl_history["elapsed_seconds"] = 300.0
-            raise HTTPException(status_code=504, detail="ETL 執行超時（>300秒）")
+            _etl_history["last_error"] = "ETL 執行超時（>600秒）"
+            _etl_history["elapsed_seconds"] = 600.0
+            raise HTTPException(status_code=504, detail="ETL 執行超時（>600秒）")
         except HTTPException:
             # 已在上方分支記錄歷史，直接重拋
             raise

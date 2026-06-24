@@ -10,17 +10,16 @@ extract:
 load:
   · write_signing — 按 source_system 全量刷新
 """
-from sqlalchemy import text
-
-from config import get_engine, stats, ASIA
-from utils import cs, cf, safe_date, combine_ymd, read_excel, normalize_biz_type
-from time_boundary import FY_START, DAILY_START
+from config import ASIA
 from dimensions import (
     load_staff_map,
     get_group, get_group_advisor,
     get_actual_advisor, get_subline,
     get_eurasia_advisor_group,
 )
+from fact_writer import refresh_fact_table
+from time_boundary import FY_START, DAILY_START
+from utils import cs, cf, safe_date, combine_ymd, read_excel, normalize_biz_type
 
 
 def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
@@ -323,34 +322,21 @@ def mod_B4():
     return recs
 
 
+# 写入列清单：顺序与 _sign_rec() 返回的 dict 键一一对应（命名占位符按列名绑定）
+SIGNING_COLUMNS = (
+    "contract_no", "sign_date", "advisor_name", "original_dept", "actual_advisor",
+    "line", "sub_line", "secondary_group", "secondary_group_advisor",
+    "sign_biz_type", "school", "gross_sign", "source_system",
+)
+
+
 def write_signing(records):
-    """写入签约事实表（按 source_system 全量刷新）
-    策略：先清除该数据层的旧记录，再全量写入。
-    - 定版数据(月更/历史)：从源文件完整重载，不做任何过滤或去重
-    - 日更数据：每日清除旧日更后重新写入
+    """写入签约事实表（无条件全量刷新受管分层，幂等）。
+
+    [double 根治] 删除动作绑定 config.MANAGED_SOURCES（固定受管源集合），
+    而非「本次 records 里出现过的 source」——即使某次同步缺少月更/历史源档，
+    残留分区也会被清空，不再与重灌数据叠加翻倍。
+
+    保护 / 原子性 / 可观测性均由 fact_writer.refresh_fact_table 统一保证。
     """
-    if not records: return
-    # 按数据层分组
-    by_source = {}
-    for rec in records:
-        by_source.setdefault(rec["source_system"], []).append(rec)
-    total_ins = 0
-    with get_engine().begin() as conn:
-        for source, recs in by_source.items():
-            # 先清除该数据层的旧数据
-            conn.execute(text(
-                "DELETE FROM fact_signing WHERE source_system = :src"
-            ), {"src": source})
-            # 全量写入，不做去重
-            for rec in recs:
-                conn.execute(text("""
-                    INSERT INTO fact_signing
-                      (contract_no,sign_date,advisor_name,original_dept,actual_advisor,line,sub_line,
-                       secondary_group,secondary_group_advisor,sign_biz_type,school,gross_sign,source_system)
-                    VALUES (:contract_no,:sign_date,:advisor_name,:original_dept,:actual_advisor,:line,:sub_line,
-                            :secondary_group,:secondary_group_advisor,:sign_biz_type,:school,:gross_sign,:source_system)
-                """), rec)
-            total_ins += len(recs)
-            print(f"    {source}: 清除旧数据 → 写入 {len(recs)} 条")
-    stats["fact_signing"] = total_ins
-    print(f"  ✓ 签约合计写入 {total_ins} 条")
+    return refresh_fact_table("fact_signing", SIGNING_COLUMNS, records, "fact_signing")

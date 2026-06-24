@@ -8,15 +8,13 @@ extract:
 load:
   · write_refund — 按 source_system 全量刷新（与 write_signing 一致）
 """
-from sqlalchemy import text
-
-from config import get_engine, stats
-from utils import cs, cf, safe_date, read_excel, normalize_biz_type
-from time_boundary import FY_START, DAILY_START
 from dimensions import (
     get_group, get_group_advisor,
     get_actual_advisor, get_subline,
 )
+from fact_writer import refresh_fact_table
+from time_boundary import FY_START, DAILY_START
+from utils import cs, cf, safe_date, read_excel, normalize_biz_type
 
 
 def _refund_rec(refund_id, refund_date, contract_no="", advisor="",
@@ -96,27 +94,18 @@ def mod_R3():
     return recs
 
 
+# 写入列清单：顺序与 _refund_rec() 返回的 dict 键一一对应（命名占位符按列名绑定）
+REFUND_COLUMNS = (
+    "refund_id", "refund_date", "contract_no", "advisor_name", "original_dept",
+    "actual_advisor", "line", "sub_line", "secondary_group",
+    "secondary_group_advisor", "refund_biz_type", "gross_refund", "source_system",
+)
+
+
 def write_refund(records):
-    """写入退费事实表（按 source_system 全量刷新，与 write_signing 一致）"""
-    if not records: return
-    by_source = {}
-    for rec in records:
-        by_source.setdefault(rec["source_system"], []).append(rec)
-    total_ins = 0
-    with get_engine().begin() as conn:
-        for source, recs in by_source.items():
-            conn.execute(text(
-                "DELETE FROM fact_refund WHERE source_system = :src"
-            ), {"src": source})
-            for rec in recs:
-                conn.execute(text("""
-                    INSERT INTO fact_refund
-                      (refund_id,refund_date,contract_no,advisor_name,original_dept,actual_advisor,
-                       line,sub_line,secondary_group,secondary_group_advisor,refund_biz_type,gross_refund,source_system)
-                    VALUES (:refund_id,:refund_date,:contract_no,:advisor_name,:original_dept,:actual_advisor,
-                            :line,:sub_line,:secondary_group,:secondary_group_advisor,:refund_biz_type,:gross_refund,:source_system)
-                """), rec)
-            total_ins += len(recs)
-            print(f"    {source}: 清除旧数据 → 写入 {len(recs)} 条")
-    stats["fact_refund"] = total_ins
-    print(f"  ✓ 退费合计写入 {total_ins} 条")
+    """写入退费事实表（无条件全量刷新受管分层，与 write_signing 完全一致）。
+
+    [double 根治] 同 write_signing：删除绑定 config.MANAGED_SOURCES，
+    缺源档时残留分区一样会被清空，不再翻倍。
+    """
+    return refresh_fact_table("fact_refund", REFUND_COLUMNS, records, "fact_refund")

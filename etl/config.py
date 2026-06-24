@@ -49,7 +49,7 @@ FILES = {
     "history_sign":   (PREDATA_DIR, "历史数据.xlsx",             "签约明细",     0),  # A3
     "history_refund": (PREDATA_DIR, "历史数据.xlsx",             "退费",         0),  # R3
     "history_school": (PREDATA_DIR, "历史数据-学校.xlsx",        "签约金额按天", 0),  # B3
-    "unrecognized":   (PREDATA_DIR, "【人手更】未认款明细.xlsx", "未认款明细",   0),  # 表头第2行=header=1
+    "unrecognized": (PREDATA_DIR, "【人手更】未认款明细.xlsx", "未认款明细", 1),  # 表头第2行=header=1
 }
 
 ASIA = {"日本","韩国","泰国","亚洲其他","中国香港","中国澳门","香港","澳门","新加坡","马来西亚"}

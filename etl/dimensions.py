@@ -12,6 +12,7 @@ dimensions.py — 维度域（加载 + 同步）
 
 注意：sync_dim_target 依赖 dim_group_dept 已写入，调用顺序由主入口保证。
 """
+import pandas as pd
 from sqlalchemy import text
 
 from config import get_engine, stats
@@ -19,8 +20,6 @@ from utils import (
     cs, cs_or_none, safe_date, read_excel,
     normalize_biz_type, _fix_excel_serial,
 )
-import pandas as pd
-
 
 # ═══════════════════════════════════════════════════════════════
 #  维度加载（第六章）
@@ -71,7 +70,7 @@ def load_history_group():
     if df is not None:
         for i, (_, r) in enumerate(df.iterrows()):
             cn = cs(r.get("合同号"))
-            g = cs(r.get("团队分组"))
+            g = cs(r.get("分组")) or cs(r.get("团队分组"))
             if cn and g: m[cn] = g
     _dim_cache["hist_group"] = m
     return m

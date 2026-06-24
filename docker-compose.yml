@@ -96,7 +96,7 @@ services:
     volumes:
       - ${PREDATA_PATH:-/kiki/KiKiAutoPullDataScript/PreData}:/data/PreData:ro
       - ${PULLDATA_PATH:-/kiki/n8n_data/PullData}:/data/PullData:ro
-      - ./etl/daily_sync.py:/etl/daily_sync.py:ro
+      - ./etl:/etl:ro
     networks: [qiantu_net]
     profiles: [etl]
 

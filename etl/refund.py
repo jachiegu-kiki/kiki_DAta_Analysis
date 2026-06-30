@@ -9,7 +9,7 @@ load:
   · write_refund — 按 source_system 全量刷新（与 write_signing 一致）
 """
 from dimensions import (
-    get_group, get_group_advisor,
+    get_group, get_group_advisor_refund,
     get_actual_advisor, get_subline,
 )
 from fact_writer import refresh_fact_table
@@ -21,13 +21,16 @@ def _refund_rec(refund_id, refund_date, contract_no="", advisor="",
                 dept="", line="", biz_type="留学", gross_refund=0, source="日更"):
     # v6: biz_type 统一走归一化，保证 '语培'/'培训' 也能正确识别
     biz_type = normalize_biz_type(biz_type)
+    # 实际签约顾问先算出，退费的 secondary_group_advisor 依赖它判离职
+    actual = get_actual_advisor(contract_no, advisor)
     sg = "语培" if biz_type == "多语" else get_group(contract_no, advisor)
-    sga = "语培" if biz_type == "多语" else get_group_advisor(contract_no, advisor)
+    sga = ("语培" if biz_type == "多语"
+           else get_group_advisor_refund(contract_no, actual, refund_date))
     return {
         "refund_id": cs(refund_id), "refund_date": refund_date,
         "contract_no": cs(contract_no),
         "advisor_name": cs(advisor), "original_dept": cs(dept),
-        "actual_advisor": get_actual_advisor(contract_no, advisor),
+        "actual_advisor": actual,
         "line": cs(line), "sub_line": get_subline(contract_no),
         "secondary_group": sg,
         "secondary_group_advisor": sga,

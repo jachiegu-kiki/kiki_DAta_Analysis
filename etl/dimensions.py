@@ -62,17 +62,63 @@ def load_sign_group():
     return m_sys, m_adv, m_actual
 
 
-def load_history_group():
-    """历史数据签约明细：合同号 → 团队分组（优先级2，往年）"""
-    if "hist_group" in _dim_cache: return _dim_cache["hist_group"]
-    m = {}
+def _load_history_detail():
+    """历史数据签约明细：合同号 → (分组, 顾问口径分组, 实际签约顾问)
+
+    一次性扫描 history_sign，构建三套映射供不同口径复用（避免重复读表）：
+      · g_map  分组      = 「分组」(兜底旧档「团队分组」)         供 get_group（系统口径，优先级2）
+      · ga_map 顾问口径   = 「实际分组」, 为空回退「分组」          供 get_group_advisor_signing
+      · aa_map 实际顾问   = 「实际签约顾问」, 为空回退「签约顾问」    供 get_actual_advisor
+
+    源表列名变更（2026-06）：原「团队分组」列已删除，改用「分组」列，
+    仍保留对「团队分组」的兜底读取以兼容旧版历史档。
+    """
+    if "hist_detail" in _dim_cache: return _dim_cache["hist_detail"]
+    g_map, ga_map, aa_map = {}, {}, {}
     df = read_excel("history_sign")
     if df is not None:
-        for i, (_, r) in enumerate(df.iterrows()):
+        for _, r in df.iterrows():
             cn = cs(r.get("合同号"))
+            if not cn: continue
             g = cs(r.get("分组")) or cs(r.get("团队分组"))
-            if cn and g: m[cn] = g
-    _dim_cache["hist_group"] = m
+            if g: g_map[cn] = g
+            ga = cs(r.get("实际分组")) or cs(r.get("分组"))
+            if ga: ga_map[cn] = ga
+            aa = cs(r.get("实际签约顾问")) or cs(r.get("签约顾问"))
+            if aa: aa_map[cn] = aa
+    _dim_cache["hist_detail"] = (g_map, ga_map, aa_map)
+    return g_map, ga_map, aa_map
+
+
+def load_history_group():
+    """历史签约明细 合同号 → 分组（系统口径，get_group 优先级2）"""
+    return _load_history_detail()[0]
+
+
+def load_history_group_advisor():
+    """历史签约明细 合同号 → 实际分组(回退分组)（顾问口径）"""
+    return _load_history_detail()[1]
+
+
+def load_history_actual_advisor():
+    """历史签约明细 合同号 → 实际签约顾问(回退签约顾问)"""
+    return _load_history_detail()[2]
+
+
+def load_staff_exit_map():
+    """职员表：顾问姓名 → 离职日（无离职日 / 在职为 None）
+
+    供退费 secondary_group_advisor 判断「退费日该实际签约顾问是否已离职」。
+    """
+    if "staff_exit" in _dim_cache: return _dim_cache["staff_exit"]
+    m = {}
+    df = read_excel("staff")
+    if df is not None:
+        for _, r in df.iterrows():
+            name = cs(r.get("顾问"))
+            if not name: continue
+            m[name] = safe_date(r.get("离职时间"))
+    _dim_cache["staff_exit"] = m
     return m
 
 
@@ -132,19 +178,55 @@ def get_group(contract_no: str, advisor: str) -> str:
     return "未知部门"
 
 
-def get_group_advisor(contract_no: str, advisor: str) -> str:
-    """查找分组部门-顾问口径：签约分组优先，回退到系统口径"""
+def get_group_advisor_signing(contract_no: str) -> str:
+    """[2026-06 重定义] fact_signing 的 secondary_group_advisor（顾问口径）
+
+    兜底先后：
+      1. 签约分组.xlsx「分组部门」列（系统口径），按合同号匹配
+      2. 历史签约明细「实际分组」列，为空回退「分组」列
+      3. 以上均未命中 → '未知部门'
+    （多语→'语培' / 欧亚回填 由调用方 _sign_rec 处理，不在此函数内）
+    """
     cn = cs(contract_no)
-    _, sg_adv, _ = load_sign_group()
-    if cn in sg_adv: return sg_adv[cn]
-    return get_group(contract_no, advisor)
+    m_sys, _, _ = load_sign_group()
+    if m_sys.get(cn): return m_sys[cn]
+    ga = load_history_group_advisor()
+    if ga.get(cn): return ga[cn]
+    return "未知部门"
+
+
+def get_group_advisor_refund(contract_no: str, actual_advisor: str,
+                             refund_date) -> str:
+    """[2026-06 新增] fact_refund 的 secondary_group_advisor（顾问口径）
+
+    规则：先判断该实际签约顾问在退费日是否已离职（依职员表离职日）：
+      · 未离职（无离职日 或 离职日晚于退费日）→ 该顾问职员表「二级分组部门」
+      · 已离职 / 无法判定（顾问不在职员表）→ 与 fact_signing 写入逻辑一致
+    判定口径：离职日 <= 退费日 视为「已离职」。
+    """
+    adv = cs(actual_advisor)
+    if adv and refund_date:
+        name_to_group, _ = load_staff_map()
+        if adv in name_to_group:
+            exit_d = load_staff_exit_map().get(adv)
+            if exit_d is None or exit_d > refund_date:  # 未离职
+                return name_to_group[adv]
+    return get_group_advisor_signing(contract_no)
 
 
 def get_actual_advisor(contract_no: str, fallback_advisor: str) -> str:
-    """查找实际签约顾问：签约分组优先，回退到系统顾问"""
+    """[2026-06 重定义] 查找实际签约顾问，兜底先后：
+
+      1. 签约分组.xlsx「实际签约顾问」列，按合同号匹配
+      2. 历史签约明细「实际签约顾问」列，为空回退「签约顾问」列
+      3. 除此以外不再兜底（沿用调用方传入的 fallback_advisor —
+         历史路径下其值即「签约顾问」；多语且空时由上游欧亚回填覆盖）
+    """
     cn = cs(contract_no)
     _, _, m_actual = load_sign_group()
-    if cn in m_actual: return m_actual[cn]
+    if m_actual.get(cn): return m_actual[cn]
+    ha = load_history_actual_advisor()
+    if ha.get(cn): return ha[cn]
     return cs(fallback_advisor)
 
 

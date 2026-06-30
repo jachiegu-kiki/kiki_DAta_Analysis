@@ -13,7 +13,7 @@ load:
 from config import ASIA
 from dimensions import (
     load_staff_map,
-    get_group, get_group_advisor,
+    get_group, get_group_advisor_signing,
     get_actual_advisor, get_subline,
     get_eurasia_advisor_group,
 )
@@ -48,7 +48,7 @@ def _sign_rec(contract_no, sign_date, advisor="", dept="", line="",
     final_advisor = cs(advisor) or eurasia_adv
 
     sg = "语培" if biz_type == "多语" else get_group(cn, advisor)
-    sga = "语培" if biz_type == "多语" else get_group_advisor(cn, advisor)
+    sga = "语培" if biz_type == "多语" else get_group_advisor_signing(cn)
     # [v7] 命中欧亚维度: 用 收入人次 sheet 的 '分组' 列覆盖默认 '语培'
     if eurasia_grp:
         sg = eurasia_grp

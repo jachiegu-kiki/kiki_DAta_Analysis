@@ -182,14 +182,14 @@ def get_group_advisor_signing(contract_no: str) -> str:
     """[2026-06 重定义] fact_signing 的 secondary_group_advisor（顾问口径）
 
     兜底先后：
-      1. 签约分组.xlsx「分组部门」列（系统口径），按合同号匹配
+      1. 签约分组.xlsx「分组部门（顾问口径）」列，按合同号匹配
       2. 历史签约明细「实际分组」列，为空回退「分组」列
       3. 以上均未命中 → '未知部门'
     （多语→'语培' / 欧亚回填 由调用方 _sign_rec 处理，不在此函数内）
     """
     cn = cs(contract_no)
-    m_sys, _, _ = load_sign_group()
-    if m_sys.get(cn): return m_sys[cn]
+    _, m_adv, _ = load_sign_group()
+    if m_adv.get(cn): return m_adv[cn]
     ga = load_history_group_advisor()
     if ga.get(cn): return ga[cn]
     return "未知部门"
@@ -197,19 +197,19 @@ def get_group_advisor_signing(contract_no: str) -> str:
 
 def get_group_advisor_refund(contract_no: str, actual_advisor: str,
                              refund_date) -> str:
-    """[2026-06 新增] fact_refund 的 secondary_group_advisor（顾问口径）
+    """[2026-06 修正] fact_refund 的 secondary_group_advisor（顾问口径）
 
     规则：先判断该实际签约顾问在退费日是否已离职（依职员表离职日）：
-      · 未离职（无离职日 或 离职日晚于退费日）→ 该顾问职员表「二级分组部门」
-      · 已离职 / 无法判定（顾问不在职员表）→ 与 fact_signing 写入逻辑一致
+      · 已离职（有离职日 且 离职日 <= 退费日）→ 该顾问职员表「二级分组部门」
+      · 未离职 / 不在职员表 → 与 fact_signing 写入逻辑一致
     判定口径：离职日 <= 退费日 视为「已离职」。
     """
     adv = cs(actual_advisor)
     if adv and refund_date:
-        name_to_group, _ = load_staff_map()
-        if adv in name_to_group:
-            exit_d = load_staff_exit_map().get(adv)
-            if exit_d is None or exit_d > refund_date:  # 未离职
+        exit_d = load_staff_exit_map().get(adv)
+        if exit_d is not None and exit_d <= refund_date:  # 已离职
+            name_to_group, _ = load_staff_map()
+            if name_to_group.get(adv):
                 return name_to_group[adv]
     return get_group_advisor_signing(contract_no)
 
